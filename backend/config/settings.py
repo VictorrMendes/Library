@@ -147,3 +147,7 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Servidor de leitura auto-hospedado",
     "VERSION": "1.0.0",
 }
+
+# Reverse proxy — tells Django to trust X-Forwarded-Proto from nginx/NPM/Cloudflare
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
