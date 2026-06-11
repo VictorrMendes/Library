@@ -76,28 +76,21 @@ def chapter_images(request, chapter_id):
                 total_pages = len(spine_pages)
             except Exception:
                 total_pages = 0
-        base = f"/api/reader/chapter/{chapter_id}"
         return Response({
             "format": "epub",
             "total_pages": total_pages,
-            "book_page_base_url": request.build_absolute_uri(
-                f"{base}/book-page/"
-            ),
+            "book_page_base_url": f"/api/reader/chapter/{chapter_id}/book-page/",
         })
 
     if manga_file.format == "pdf":
         return Response({
             "format": "pdf",
             "total_pages": chapter.pages,
-            "pdf_url": request.build_absolute_uri(
-                f"/api/reader/chapter/{chapter_id}/pdf/"
-            ),
+            "pdf_url": f"/api/reader/chapter/{chapter_id}/pdf/",
         })
 
     pages = [
-        request.build_absolute_uri(
-            f"/api/reader/chapter/{chapter_id}/image/{i}/"
-        )
+        f"/api/reader/chapter/{chapter_id}/image/{i}/"
         for i in range(chapter.pages)
     ]
     return Response({
@@ -226,9 +219,7 @@ def chapter_book_page(request, chapter_id):
     doc_path = item.file_name
     content = item.get_content().decode("utf-8", errors="replace")
 
-    resource_base = request.build_absolute_uri(
-        f"/api/reader/chapter/{chapter_id}/book-resource/"
-    )
+    resource_base = f"/api/reader/chapter/{chapter_id}/book-resource/"
 
     def make_absolute(url):
         resolved = _resolve_epub_path(doc_path, url)
