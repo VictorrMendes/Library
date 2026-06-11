@@ -47,6 +47,10 @@ export const authApi = {
     api.patch("/account/me/preferences/", data),
   changePassword: (current_password: string, new_password: string) =>
     api.post("/account/me/password/", { current_password, new_password }),
+  updateProfile: (data: FormData | { email?: string; username?: string }) =>
+    api.patch("/account/me/", data, {
+      headers: data instanceof FormData ? { "Content-Type": "multipart/form-data" } : {},
+    }),
 };
 
 // ─── Library ─────────────────────────────────────────────────────────────────

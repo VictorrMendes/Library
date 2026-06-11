@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { BookOpen, Eye, EyeOff, Loader2 } from "lucide-react";
 import { authApi } from "@/lib/api";
@@ -88,6 +89,13 @@ export default function LoginPage() {
             Entrar
           </button>
         </form>
+
+        <p className="text-center text-sm text-muted-foreground mt-6">
+          Não tem uma conta?{" "}
+          <Link href="/register" className="text-primary hover:underline font-medium">
+            Criar conta
+          </Link>
+        </p>
       </div>
     </div>
   );

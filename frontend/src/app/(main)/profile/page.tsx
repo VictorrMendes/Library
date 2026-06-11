@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { Loader2, Eye, EyeOff, CheckCircle2, Key, Trash2, Plus } from "lucide-react";
+import { Loader2, Eye, EyeOff, CheckCircle2, Key, Trash2, Plus, Camera } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import type { User } from "@/types";
@@ -40,6 +40,8 @@ export default function ProfilePage() {
   const [prefsSuccess, setPrefsSuccess] = useState(false);
   const [newKeyLabel, setNewKeyLabel] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [infoSuccess, setInfoSuccess] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const prefForm = useForm<PrefsForm>({
     defaultValues: {
@@ -55,6 +57,30 @@ export default function ProfilePage() {
   });
 
   const pwForm = useForm<PasswordForm>();
+
+  const infoForm = useForm({ defaultValues: { email: user?.email ?? "" } });
+
+  const infoMutation = useMutation({
+    mutationFn: (data: { email: string }) => authApi.updateProfile(data),
+    onSuccess: async () => {
+      const { data: fresh } = await authApi.me();
+      setUser(fresh);
+      setInfoSuccess(true);
+      setTimeout(() => setInfoSuccess(false), 3000);
+    },
+  });
+
+  const avatarMutation = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append("avatar", file);
+      return authApi.updateProfile(fd);
+    },
+    onSuccess: async () => {
+      const { data: fresh } = await authApi.me();
+      setUser(fresh);
+    },
+  });
 
   const prefsMutation = useMutation({
     mutationFn: (data: PrefsForm) => authApi.updatePreferences(data as unknown as Record<string, unknown>),
@@ -156,6 +182,86 @@ export default function ProfilePage() {
           Preferências de leitura e configurações da conta.
         </p>
       </div>
+
+      {/* Account info */}
+      <Section title="Informações da Conta">
+        <div className="flex items-center gap-5">
+          {/* Avatar */}
+          <div className="relative shrink-0">
+            <div className="h-20 w-20 rounded-full bg-primary/20 flex items-center justify-center text-primary text-2xl font-bold overflow-hidden">
+              {user?.avatar ? (
+                <img src={user.avatar} alt="avatar" className="h-full w-full object-cover" />
+              ) : (
+                user?.username?.[0]?.toUpperCase()
+              )}
+            </div>
+            <button
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarMutation.isPending}
+              className="absolute bottom-0 right-0 h-7 w-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground hover:bg-primary/90 transition-colors shadow"
+              title="Alterar foto"
+            >
+              {avatarMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Camera className="h-3.5 w-3.5" />
+              )}
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) avatarMutation.mutate(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          {/* Username + email form */}
+          <form
+            onSubmit={infoForm.handleSubmit((d) => infoMutation.mutate(d))}
+            className="flex-1 space-y-3"
+          >
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Usuário</label>
+              <p className="text-sm font-medium px-3 py-2 rounded-lg bg-muted border border-border">
+                {user?.username}
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">E-mail</label>
+              <input
+                {...infoForm.register("email", {
+                  required: true,
+                  pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "E-mail inválido" },
+                })}
+                type="email"
+                className={inputCls}
+                autoComplete="email"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={infoMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+              >
+                {infoMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Salvar
+              </button>
+              {infoSuccess && (
+                <span className="flex items-center gap-1.5 text-sm text-green-400">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Salvo!
+                </span>
+              )}
+            </div>
+          </form>
+        </div>
+      </Section>
 
       {/* Reading preferences */}
       <Section title="Preferências de Leitura">

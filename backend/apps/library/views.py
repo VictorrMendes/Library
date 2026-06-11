@@ -1,4 +1,4 @@
-from rest_framework import generics, viewsets, filters, status, permissions
+from rest_framework import viewsets, filters, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -17,22 +17,19 @@ from .serializers import (
 )
 
 
-class IsAdminOrReadOnly(permissions.BasePermission):
-    def has_permission(self, request, view):
-        if request.method in permissions.SAFE_METHODS:
-            return request.user.is_authenticated
-        return request.user.is_authenticated and request.user.is_admin
-
-
 class LibraryViewSet(viewsets.ModelViewSet):
     serializer_class = LibrarySerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
         if user.is_admin:
             return Library.objects.all()
         return user.libraries.all()
+
+    def perform_create(self, serializer):
+        library = serializer.save()
+        library.users.add(self.request.user)
 
     @action(detail=True, methods=["post"])
     def scan(self, request, pk=None):
@@ -44,8 +41,12 @@ class LibraryViewSet(viewsets.ModelViewSet):
 
 class SeriesFilter(df.FilterSet):
     library = df.NumberFilter(field_name="library_id")
-    genre = df.CharFilter(field_name="metadata__genres__normalized", lookup_expr="icontains")
-    tag = df.CharFilter(field_name="metadata__tags__normalized", lookup_expr="icontains")
+    genre = df.CharFilter(
+        field_name="metadata__genres__normalized", lookup_expr="icontains"
+    )
+    tag = df.CharFilter(
+        field_name="metadata__tags__normalized", lookup_expr="icontains"
+    )
     status = df.CharFilter(field_name="metadata__publication_status")
     language = df.CharFilter(field_name="metadata__language")
     year = df.NumberFilter(field_name="metadata__release_year")
@@ -56,21 +57,27 @@ class SeriesFilter(df.FilterSet):
 
 
 class SeriesViewSet(viewsets.ModelViewSet):
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
+    ]
     filterset_class = SeriesFilter
-    search_fields = ["name", "localized_name", "original_name", "metadata__summary"]
+    search_fields = [
+        "name", "localized_name", "original_name", "metadata__summary"
+    ]
     ordering_fields = ["sort_name", "created_at", "last_modified", "pages"]
     ordering = ["sort_name"]
 
     def get_queryset(self):
         user = self.request.user
-        accessible_libraries = (
+        accessible = (
             Library.objects.all() if user.is_admin else user.libraries.all()
         )
         return (
-            Series.objects.filter(library__in=accessible_libraries)
+            Series.objects.filter(library__in=accessible)
             .select_related("metadata")
-            .prefetch_related("metadata__genres", "metadata__tags", "metadata__people")
+            .prefetch_related(
+                "metadata__genres", "metadata__tags", "metadata__people"
+            )
         )
 
     def get_serializer_class(self):
@@ -81,7 +88,9 @@ class SeriesViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def volumes(self, request, pk=None):
         series = self.get_object()
-        volumes = series.volumes.prefetch_related("chapters__files").order_by("min_number")
+        volumes = (
+            series.volumes.prefetch_related("chapters__files").order_by("min_number")
+        )
         return Response(VolumeSerializer(volumes, many=True).data)
 
     @action(detail=True, methods=["patch"], url_path="metadata")
@@ -99,7 +108,7 @@ class SeriesViewSet(viewsets.ModelViewSet):
         from apps.scanner.tasks import scan_series
         series = self.get_object()
         task = scan_series.delay(series.id)
-        return Response({"task_id": task.id, "detail": "Scan da série iniciado."})
+        return Response({"task_id": task.id, "detail": "Scan iniciado."})
 
 
 class VolumeViewSet(viewsets.ReadOnlyModelViewSet):
