@@ -44,7 +44,8 @@ def _open_epub(file_path):
 
 
 def _resolve_epub_path(doc_path, rel_url):
-    """Resolve a relative URL in an EPUB page to its path from the EPUB root."""
+    """Resolve a relative URL in an EPUB page to its path from the EPUB root.
+    """
     if not rel_url:
         return None
     if '#' in rel_url:
@@ -79,7 +80,9 @@ def chapter_images(request, chapter_id):
         return Response({
             "format": "epub",
             "total_pages": total_pages,
-            "book_page_base_url": f"/api/reader/chapter/{chapter_id}/book-page/",
+            "book_page_base_url": (
+                f"/api/reader/chapter/{chapter_id}/book-page/"
+            ),
         })
 
     if manga_file.format == "pdf":
@@ -350,10 +353,18 @@ def update_progress(request):
             "library": chapter.library,
         },
     )
+    old_pages = progress.pages_read
     progress.pages_read = data["pages_read"]
     if "book_scroll_id" in data:
         progress.book_scroll_id = data["book_scroll_id"]
-    if data["pages_read"] >= chapter.pages:
+    # Only count a completion when transitioning incomplete → complete.
+    # Guard pages > 0: EPUB chapters are stored with pages=0 in the DB.
+    newly_complete = (
+        chapter.pages > 0
+        and progress.pages_read >= chapter.pages
+        and old_pages < chapter.pages
+    )
+    if newly_complete:
         progress.total_reads += 1
     progress.save()
 
