@@ -1,0 +1,60 @@
+# ─── Segredos (NUNCA comitar) ────────────────────────────────────────────────
+.env
+.env.prod
+backend/.env
+*.key
+*.pem
+
+# ─── Python / Django ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+backend/staticfiles/
+backend/media/
+backend/covers/
+
+# ─── Node / Next.js ───────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+# (manter docker-compose.yml e docker-compose.prod.yml no repo)
+
+# ─── Dados locais (não subir manga/mídia) ─────────────────────────────────────
+manga/
+uploads/
+media/
+covers/
+
+# ─── Ferramentas e IDE ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── Claude Code (configuração local do assistente) ───────────────────────────
+.claude/
+
+# ─── Documentos locais (notas, handoffs, análises) ────────────────────────────
+estrutura.md
+HANDOFF.md
+docs/
+
+# ─── Help (código de referência — não necessário no deploy) ───────────────────
+help/

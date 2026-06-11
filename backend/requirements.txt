@@ -1,0 +1,27 @@
+django==5.0.6
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+django-cors-headers==4.4.0
+django-filter==24.2
+django-storages==1.14.3
+psycopg2-binary==2.9.9
+python-decouple==3.8
+Pillow==10.4.0
+celery==5.4.0
+redis==5.0.8
+kombu==5.3.7
+drf-spectacular==0.27.2
+
+# File processing
+pypdf==4.3.1
+ebooklib==0.18
+patool==2.3.0
+rarfile==4.1
+py7zr==0.21.1
+
+# Image processing
+Pillow==10.4.0
+
+# Utilities
+python-slugify==8.0.4
+humanize==4.10.0

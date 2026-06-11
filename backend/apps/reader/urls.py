@@ -1,0 +1,66 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path(
+        "chapter/<int:chapter_id>/images/",
+        views.chapter_images,
+        name="chapter-images",
+    ),
+    path(
+        "chapter/<int:chapter_id>/image/<int:page>/",
+        views.chapter_image,
+        name="chapter-image",
+    ),
+    path(
+        "chapter/<int:chapter_id>/pdf/",
+        views.chapter_pdf,
+        name="chapter-pdf",
+    ),
+    path(
+        "chapter/<int:chapter_id>/download/",
+        views.chapter_download,
+        name="chapter-download",
+    ),
+    path(
+        "chapter/<int:chapter_id>/book-page/",
+        views.chapter_book_page,
+        name="chapter-book-page",
+    ),
+    path(
+        "chapter/<int:chapter_id>/book-resource/",
+        views.chapter_book_resource,
+        name="chapter-book-resource",
+    ),
+    path(
+        "series/<int:series_id>/continue/",
+        views.continue_point,
+        name="continue-point",
+    ),
+    path(
+        "series/<int:series_id>/progress/",
+        views.series_progress,
+        name="series-progress",
+    ),
+    path("progress/", views.update_progress, name="update-progress"),
+    path(
+        "bookmarks/",
+        views.BookmarkListCreateView.as_view(),
+        name="bookmarks",
+    ),
+    path(
+        "bookmarks/<int:pk>/",
+        views.BookmarkDestroyView.as_view(),
+        name="bookmark-delete",
+    ),
+    path(
+        "annotations/",
+        views.AnnotationListCreateView.as_view(),
+        name="annotations",
+    ),
+    path(
+        "annotations/<int:pk>/",
+        views.AnnotationDetailView.as_view(),
+        name="annotation-detail",
+    ),
+]
