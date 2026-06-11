@@ -148,6 +148,10 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
 }
 
-# Reverse proxy — tells Django to trust X-Forwarded-Proto from nginx/NPM/Cloudflare
+# Reverse proxy — tells Django to trust X-Forwarded-Proto from NPM/Cloudflare
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
+
+# Allow same-origin iframes (EPUB reader embeds pages via iframe on the same domain).
+# The book-page view overrides this to ALLOWALL for its specific responses.
+X_FRAME_OPTIONS = "SAMEORIGIN"

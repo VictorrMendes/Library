@@ -1,16 +1,4 @@
 services:
-  nginx:
-    image: nginx:alpine
-    container_name: biblioteca_nginx
-    ports:
-      - "${NGINX_PORT:-80}:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - backend
-      - frontend
-    restart: unless-stopped
-
   db:
     image: postgres:16-alpine
     container_name: biblioteca_db
@@ -43,6 +31,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: biblioteca_backend
+    ports:
+      - "8000:8000"
     env_file: .env.prod
     volumes:
       - ${MANGA_PATH:-/srv/biblioteca/manga}:/manga
@@ -92,9 +82,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Embutida no build — aponta para o mesmo domínio via Nginx
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: biblioteca_frontend
+    ports:
+      - "3000:3000"
     depends_on:
       - backend
     restart: unless-stopped
