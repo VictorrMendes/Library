@@ -1,7 +1,9 @@
+import hashlib
 import os
 import re
 import mimetypes
 import posixpath
+import threading
 import zipfile
 from pathlib import Path
 from django.http import FileResponse, Http404, HttpResponse
@@ -21,26 +23,62 @@ from .serializers import (
 )
 
 
-# ─── EPUB helpers ────────────────────────────────────────────────────────────
+# ─── EPUB extraction cache ───────────────────────────────────────────────────
+# EPUBs are extracted to /tmp/epub_cache/<hash>/ on first access.
+# Subsequent page/resource requests read directly from the filesystem —
+# no re-parsing with ebooklib.
 
-def _open_epub(file_path):
-    """Open an EPUB and return (spine_pages_list, book).
+EPUB_CACHE_DIR = "/tmp/epub_cache"
+_epub_lock = threading.Lock()
+_epub_extractions: dict = {}  # {file_path: (mtime, extract_dir, spine_names)}
 
-    ebooklib assigns ITEM_DOCUMENT (9) to .xhtml files and ITEM_UNKNOWN (0)
-    to plain .html files, so we accept both to support all EPUB variants.
+
+def _ensure_epub_extracted(file_path):
+    """Extract EPUB to a temp dir once; return (extract_dir, spine_file_names).
+
+    ebooklib is called only on the first access per file (per process).
+    Race-safe: concurrent workers may both extract, which is harmless since
+    they write identical content to the same path.
     """
-    book = epub_lib.read_epub(file_path)
-    pages = []
-    for item_id, _ in book.spine:
-        item = book.get_item_with_id(item_id)
-        if item is None:
-            continue
-        t = item.get_type()
-        name = item.file_name
-        ext = name.rsplit('.', 1)[-1].lower()
-        if t == ebooklib.ITEM_DOCUMENT or ext in ('html', 'xhtml', 'htm'):
-            pages.append(item)
-    return pages, book
+    try:
+        current_mtime = os.path.getmtime(file_path)
+    except OSError:
+        raise Http404
+
+    with _epub_lock:
+        cached = _epub_extractions.get(file_path)
+        if cached and cached[0] == current_mtime:
+            return cached[1], cached[2]
+
+    path_hash = hashlib.md5(file_path.encode()).hexdigest()
+    extract_dir = os.path.join(EPUB_CACHE_DIR, path_hash)
+
+    try:
+        os.makedirs(extract_dir, exist_ok=True)
+        with zipfile.ZipFile(file_path) as zf:
+            zf.extractall(extract_dir)
+    except Exception:
+        raise Http404
+
+    try:
+        book = epub_lib.read_epub(file_path)
+        spine_names = []
+        for item_id, _ in book.spine:
+            item = book.get_item_with_id(item_id)
+            if item is None:
+                continue
+            t = item.get_type()
+            name = item.file_name
+            ext = name.rsplit(".", 1)[-1].lower()
+            if t == ebooklib.ITEM_DOCUMENT or ext in ("html", "xhtml", "htm"):
+                spine_names.append(name)
+    except Exception:
+        raise Http404
+
+    with _epub_lock:
+        _epub_extractions[file_path] = (current_mtime, extract_dir, spine_names)
+
+    return extract_dir, spine_names
 
 
 def _resolve_epub_path(doc_path, rel_url):
@@ -73,8 +111,8 @@ def chapter_images(request, chapter_id):
         total_pages = 0
         if os.path.exists(manga_file.file_path):
             try:
-                spine_pages, _ = _open_epub(manga_file.file_path)
-                total_pages = len(spine_pages)
+                _, spine_names = _ensure_epub_extracted(manga_file.file_path)
+                total_pages = len(spine_names)
             except Exception:
                 total_pages = 0
         return Response({
@@ -210,17 +248,18 @@ def chapter_book_page(request, chapter_id):
     except (ValueError, TypeError):
         page_num = 0
 
+    extract_dir, spine_names = _ensure_epub_extracted(manga_file.file_path)
+
+    if page_num < 0 or page_num >= len(spine_names):
+        raise Http404
+
+    doc_path = spine_names[page_num]
+    full_path = os.path.join(extract_dir, doc_path)
     try:
-        spine_pages, _ = _open_epub(manga_file.file_path)
-    except Exception:
+        with open(full_path, "r", encoding="utf-8", errors="replace") as fh:
+            content = fh.read()
+    except OSError:
         raise Http404
-
-    if page_num < 0 or page_num >= len(spine_pages):
-        raise Http404
-
-    item = spine_pages[page_num]
-    doc_path = item.file_name
-    content = item.get_content().decode("utf-8", errors="replace")
 
     resource_base = f"/api/reader/chapter/{chapter_id}/book-resource/"
 
@@ -228,13 +267,11 @@ def chapter_book_page(request, chapter_id):
         resolved = _resolve_epub_path(doc_path, url)
         return f"{resource_base}?file={resolved}" if resolved else url
 
-    # Rewrite src="..." (images)
     content = re.sub(
         r'src=(["\'])([^"\']+)\1',
         lambda m: f'src={m.group(1)}{make_absolute(m.group(2))}{m.group(1)}',
         content,
     )
-    # Rewrite href="*.css" (stylesheets only, not navigation links)
     content = re.sub(
         r'href=(["\'])([^"\']*\.css[^"\']*)\1',
         lambda m: f'href={m.group(1)}{make_absolute(m.group(2))}{m.group(1)}',
@@ -242,7 +279,6 @@ def chapter_book_page(request, chapter_id):
     )
 
     response = HttpResponse(content, content_type="text/html; charset=utf-8")
-    # Allow embedding in iframe from any origin
     response['X-Frame-Options'] = 'ALLOWALL'
     return response
 
@@ -262,25 +298,20 @@ def chapter_book_resource(request, chapter_id):
     if manga_file.format != "epub":
         raise Http404
 
-    try:
-        _, book = _open_epub(manga_file.file_path)
-    except Exception:
+    if ".." in file_key:
         raise Http404
 
-    item = None
-    for epub_item in book.get_items():
-        if epub_item.file_name == file_key:
-            item = epub_item
-            break
+    extract_dir, _ = _ensure_epub_extracted(manga_file.file_path)
 
-    if not item:
+    resource_path = os.path.join(extract_dir, file_key)
+    if not os.path.isfile(resource_path):
         raise Http404
 
     content_type, _ = mimetypes.guess_type(file_key)
     if not content_type:
         content_type = "application/octet-stream"
 
-    return HttpResponse(item.get_content(), content_type=content_type)
+    return FileResponse(open(resource_path, "rb"), content_type=content_type)
 
 
 @api_view(["GET"])
