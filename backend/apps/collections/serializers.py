@@ -81,16 +81,24 @@ class WantToReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WantToRead
-        fields = ["id", "series_id", "series", "added_at"]
-        read_only_fields = ["id", "added_at"]
+        fields = [
+            "id", "series_id", "series", "status",
+            "added_at", "updated_at",
+        ]
+        read_only_fields = ["id", "added_at", "updated_at"]
 
     def validate(self, attrs):
         request = self.context.get("request")
+        series = attrs.get("series")
+        if not series:
+            return attrs
+        if self.instance:
+            return attrs
         if request and WantToRead.objects.filter(
-            user=request.user, series=attrs["series"]
+            user=request.user, series=series
         ).exists():
             raise serializers.ValidationError(
-                {"series_id": "Série já está na lista."}
+                {"series_id": "Série já está na estante."}
             )
         return attrs
 

@@ -5,9 +5,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  BookOpen, Clock, ChevronRight, Play, Heart, Tag, Trash2, Loader2, Camera,
+  BookOpen, Clock, ChevronRight, Play, Tag, Trash2, Loader2, Camera,
 } from "lucide-react";
 import { seriesApi, readerApi, collectionsApi } from "@/lib/api";
+import { ShelfButton } from "@/components/series/ShelfButton";
+import type { ShelfStatus } from "@/components/series/ShelfButton";
 import { SeriesDetailSkeleton } from "@/components/ui/Skeleton";
 import { SeriesCard } from "@/components/series/SeriesCard";
 import type { Series, Volume } from "@/types";
@@ -53,6 +55,36 @@ export default function SeriesDetailPage() {
     queryKey: ["progress", "series", id],
     queryFn: () => readerApi.seriesProgress(Number(id)).then((r) => r.data),
     enabled: !!series,
+  });
+
+  const { data: shelfItems = [] } = useQuery<
+    Array<{ id: number; status: ShelfStatus }>
+  >({
+    queryKey: ["shelf", id],
+    queryFn: () =>
+      collectionsApi
+        .wantToRead({ series_id: id })
+        .then((r) => r.data.results),
+    enabled: !!series,
+  });
+
+  const shelfItem = shelfItems[0] ?? null;
+
+  const shelfAddMutation = useMutation({
+    mutationFn: (s: ShelfStatus) =>
+      collectionsApi.addWantToRead(Number(id), s),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shelf", id] }),
+  });
+
+  const shelfUpdateMutation = useMutation({
+    mutationFn: ({ itemId, s }: { itemId: number; s: ShelfStatus }) =>
+      collectionsApi.updateWantToRead(itemId, s),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shelf", id] }),
+  });
+
+  const shelfRemoveMutation = useMutation({
+    mutationFn: (itemId: number) => collectionsApi.removeWantToRead(itemId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shelf", id] }),
   });
 
   const [editMeta, setEditMeta] = useState(false);
@@ -235,13 +267,20 @@ export default function SeriesDetailPage() {
                 <Play className="h-3.5 w-3.5 fill-current" />
                 Continuar
               </button>
-              <button
-                onClick={() => collectionsApi.addWantToRead(series.id)}
-                className="flex items-center gap-2 px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium hover:bg-accent transition-colors"
-              >
-                <Heart className="h-3.5 w-3.5" strokeWidth={1.75} />
-                Quero Ler
-              </button>
+              <ShelfButton
+                currentStatus={shelfItem?.status ?? null}
+                shelfId={shelfItem?.id ?? null}
+                onAdd={(s) => shelfAddMutation.mutate(s)}
+                onUpdate={(itemId, s) =>
+                  shelfUpdateMutation.mutate({ itemId, s })
+                }
+                onRemove={(itemId) => shelfRemoveMutation.mutate(itemId)}
+                loading={
+                  shelfAddMutation.isPending ||
+                  shelfUpdateMutation.isPending ||
+                  shelfRemoveMutation.isPending
+                }
+              />
               <button
                 onClick={openEditMeta}
                 className="px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium hover:bg-accent transition-colors"

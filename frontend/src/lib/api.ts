@@ -118,10 +118,14 @@ export const collectionsApi = {
   createReadingList: (data: unknown) => api.post("/collections/reading-lists/", data),
   updateReadingList: (id: number, data: unknown) => api.patch(`/collections/reading-lists/${id}/`, data),
   deleteReadingList: (id: number) => api.delete(`/collections/reading-lists/${id}/`),
-  wantToRead: () => api.get("/collections/want-to-read/"),
-  addWantToRead: (series_id: number) =>
-    api.post("/collections/want-to-read/", { series_id }),
-  removeWantToRead: (id: number) => api.delete(`/collections/want-to-read/${id}/`),
+  wantToRead: (params?: Record<string, unknown>) =>
+    api.get("/collections/want-to-read/", { params }),
+  addWantToRead: (series_id: number, status = "want_to_read") =>
+    api.post("/collections/want-to-read/", { series_id, status }),
+  updateWantToRead: (id: number, status: string) =>
+    api.patch(`/collections/want-to-read/${id}/`, { status }),
+  removeWantToRead: (id: number) =>
+    api.delete(`/collections/want-to-read/${id}/`),
   smartFilters: () => api.get("/collections/smart-filters/"),
   createSmartFilter: (data: unknown) => api.post("/collections/smart-filters/", data),
 };

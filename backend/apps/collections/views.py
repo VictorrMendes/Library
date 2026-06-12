@@ -1,7 +1,8 @@
-from rest_framework import generics, viewsets, permissions, status
+from django.db import IntegrityError
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Collection, ReadingList, ReadingListItem, WantToRead, SmartFilter
+from .models import Collection, ReadingList, WantToRead, SmartFilter
 from .serializers import (
     CollectionSerializer,
     CollectionDetailSerializer,
@@ -59,7 +60,6 @@ class ReadingListViewSet(viewsets.ModelViewSet):
             serializer.save(reading_list=reading_list)
             return Response(serializer.data, status=201)
 
-        # DELETE: remove item by chapter_id
         chapter_id = request.data.get("chapter_id")
         reading_list.items.filter(chapter_id=chapter_id).delete()
         return Response(status=204)
@@ -70,15 +70,28 @@ class WantToReadViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return (
+        qs = (
             WantToRead.objects
             .filter(user=self.request.user)
             .select_related("series__metadata")
             .prefetch_related("series__metadata__genres")
         )
+        series_id = self.request.query_params.get("series_id")
+        if series_id:
+            qs = qs.filter(series_id=series_id)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            return Response(
+                {"series_id": ["Série já está na estante."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class SmartFilterViewSet(viewsets.ModelViewSet):
