@@ -57,6 +57,11 @@ export default function AdminUploadPage() {
     queryFn: () => libraryApi.list().then((r) => r.data.results as Library[]),
   });
 
+  const selectedLibrary = libraries.find((l) => String(l.id) === libraryId);
+  const selectedHasNoFolder =
+    selectedLibrary !== undefined &&
+    (!selectedLibrary.folder_paths || selectedLibrary.folder_paths.length === 0);
+
   useEffect(() => {
     if (libraries.length > 0 && !libraryId) {
       setLibraryId(String(libraries[0].id));
@@ -118,7 +123,7 @@ export default function AdminUploadPage() {
 
   async function processQueue() {
     if (uploading) return;
-    if (!libraryId) {
+    if (!libraryId || selectedHasNoFolder) {
       setNoLibraryError(true);
       setTimeout(() => setNoLibraryError(false), 3000);
       return;
@@ -222,6 +227,15 @@ export default function AdminUploadPage() {
         {noLibraryError && libraries.length > 0 && (
           <p className="text-sm text-red-400">Selecione uma biblioteca de destino.</p>
         )}
+
+        {selectedHasNoFolder && (
+          <p className="text-sm text-yellow-400">
+            Esta biblioteca não tem nenhuma pasta configurada. O upload vai falhar.{" "}
+            <a href="/admin/libraries" className="underline hover:text-yellow-300">
+              Configure a pasta em Admin → Bibliotecas.
+            </a>
+          </p>
+        )}
       </div>
 
       {/* Drop zone */}
@@ -268,7 +282,7 @@ export default function AdminUploadPage() {
             {hasQueued && (
               <button
                 onClick={processQueue}
-                disabled={uploading || !libraryId}
+                disabled={uploading || !libraryId || selectedHasNoFolder}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
                 {uploading

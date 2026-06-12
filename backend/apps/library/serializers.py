@@ -37,6 +37,10 @@ class LibrarySerializer(serializers.ModelSerializer):
         return obj.series.count()
 
     def validate_folder_paths(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "Informe ao menos uma pasta, ex: /manga"
+            )
         for path in value:
             if not path.startswith("/"):
                 raise serializers.ValidationError(
