@@ -23,9 +23,11 @@ import {
   Menu,
   X,
   LogOut,
+  Globe,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuthStore } from "@/store/auth";
+import { useTranslatorStore } from "@/store/translator";
 import { libraryApi } from "@/lib/api";
 import type { Library as LibraryType } from "@/types";
 
@@ -56,6 +58,7 @@ const adminNav = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user, isAdmin, logout } = useAuthStore();
+  const { isOpen: translatorOpen, toggle: toggleTranslator } = useTranslatorStore();
   const [isOpen, setIsOpen] = useState(false);
 
   function handleLogout() {
@@ -172,6 +175,19 @@ export function Sidebar() {
               {label}
             </Link>
           ))}
+
+          <button
+            onClick={toggleTranslator}
+            className={clsx(
+              "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+              translatorOpen
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            )}
+          >
+            <Globe className="h-4 w-4 shrink-0" />
+            Tradutor
+          </button>
 
           {libraries.length > 0 && (
             <div className="pt-4">
