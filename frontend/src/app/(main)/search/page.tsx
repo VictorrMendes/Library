@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Search, X, SlidersHorizontal, ChevronDown } from "lucide-react";
@@ -38,7 +38,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export default function SearchPage() {
+function SearchContent() {
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [libraryId, setLibraryId] = useState("");
@@ -306,5 +306,18 @@ export default function SearchPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-6">
+        <div className="h-8 w-32 bg-muted rounded animate-pulse mb-4" />
+        <div className="h-10 w-full max-w-xl bg-muted rounded animate-pulse" />
+      </div>
+    }>
+      <SearchContent />
+    </Suspense>
   );
 }
