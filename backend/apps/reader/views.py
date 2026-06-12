@@ -311,8 +311,16 @@ def chapter_book_resource(request, chapter_id):
 def chapter_pdf(request, chapter_id):
     chapter = get_object_or_404(Chapter, pk=chapter_id)
     manga_file = chapter.files.filter(format="pdf").first()
-    if not manga_file or not os.path.exists(manga_file.file_path):
-        raise Http404
+    if not manga_file:
+        return Response(
+            {"detail": f"No PDF file for chapter {chapter_id}"},
+            status=404,
+        )
+    if not os.path.exists(manga_file.file_path):
+        return Response(
+            {"detail": f"PDF not found on disk: {manga_file.file_path}"},
+            status=404,
+        )
     return FileResponse(
         open(manga_file.file_path, "rb"),
         content_type="application/pdf",

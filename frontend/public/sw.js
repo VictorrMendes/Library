@@ -1,5 +1,5 @@
-const CACHE = "biblioteca-v1";
-const STATIC = ["/", "/dashboard", "/offline.html"];
+const CACHE = "biblioteca-v2";
+const STATIC = ["/offline.html"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(

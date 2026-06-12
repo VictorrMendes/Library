@@ -50,49 +50,49 @@
 }
 
 @layer base {
-  /* ── Warm editorial dark theme (default) ─────────────── */
+  /* ── Deep amethyst dark theme (default) ──────────────── */
   :root {
-    --background: 28 18% 5%;
-    --foreground: 36 16% 88%;
-    --card: 28 12% 9%;
-    --card-foreground: 36 16% 88%;
-    --popover: 28 12% 9%;
-    --popover-foreground: 36 16% 88%;
-    --primary: 38 82% 57%;
-    --primary-foreground: 28 18% 5%;
-    --secondary: 28 10% 15%;
-    --secondary-foreground: 36 10% 65%;
-    --muted: 28 10% 12%;
-    --muted-foreground: 36 8% 48%;
-    --accent: 28 10% 17%;
-    --accent-foreground: 36 16% 88%;
+    --background: 301 62% 4%;
+    --foreground: 300 18% 89%;
+    --card: 301 58% 7%;
+    --card-foreground: 300 18% 89%;
+    --popover: 301 58% 7%;
+    --popover-foreground: 300 18% 89%;
+    --primary: 298 55% 60%;
+    --primary-foreground: 301 62% 4%;
+    --secondary: 301 42% 13%;
+    --secondary-foreground: 300 14% 65%;
+    --muted: 301 42% 10%;
+    --muted-foreground: 300 10% 48%;
+    --accent: 301 42% 16%;
+    --accent-foreground: 300 18% 89%;
     --destructive: 0 70% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 28 10% 18%;
-    --input: 28 10% 15%;
-    --ring: 38 82% 57%;
+    --border: 301 35% 18%;
+    --input: 301 42% 12%;
+    --ring: 298 55% 60%;
     --radius: 0.5rem;
   }
 
-  /* ── Warm paper light theme ──────────────────────────── */
+  /* ── Soft lavender light theme ───────────────────────── */
   .light {
-    --background: 38 28% 97%;
-    --foreground: 28 15% 10%;
+    --background: 301 25% 97%;
+    --foreground: 301 30% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 28 15% 10%;
+    --card-foreground: 301 30% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 28 15% 10%;
-    --primary: 38 82% 48%;
+    --popover-foreground: 301 30% 10%;
+    --primary: 298 50% 42%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 38 14% 93%;
-    --secondary-foreground: 28 10% 40%;
-    --muted: 38 12% 94%;
-    --muted-foreground: 38 8% 50%;
-    --accent: 38 14% 92%;
-    --accent-foreground: 28 15% 10%;
-    --border: 38 10% 87%;
-    --input: 38 10% 90%;
-    --ring: 38 82% 48%;
+    --secondary: 301 18% 93%;
+    --secondary-foreground: 301 18% 40%;
+    --muted: 301 14% 94%;
+    --muted-foreground: 301 10% 52%;
+    --accent: 301 18% 91%;
+    --accent-foreground: 301 30% 10%;
+    --border: 301 14% 87%;
+    --input: 301 14% 90%;
+    --ring: 298 50% 42%;
   }
 }
 
