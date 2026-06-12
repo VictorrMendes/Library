@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -55,13 +55,12 @@ const adminNav = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { user, isAdmin, logout } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
 
   function handleLogout() {
     logout();
-    router.push("/login");
+    window.location.href = "/login";
   }
 
   const { data: libraries = [] } = useQuery<LibraryType[]>({
