@@ -123,12 +123,12 @@ export default function AdminLibrariesPage() {
 
   async function onSubmit(form: LibraryForm) {
     const payload = {
-      name: form.name,
+      name: form.name.trim(),
       type: form.type,
       folder_paths: form.folder_paths
-        .split("\n")
+        .split(/[\n,\s]+/)
         .map((p) => p.trim())
-        .filter(Boolean),
+        .filter((p) => p.startsWith("/")),
       include_in_dashboard: form.include_in_dashboard,
       include_in_search: form.include_in_search,
       folder_watching: form.folder_watching,
@@ -138,6 +138,11 @@ export default function AdminLibrariesPage() {
     } else {
       await createMutation.mutateAsync(payload);
     }
+  }
+
+  function getApiErrors(error: unknown): Record<string, string[]> | null {
+    const e = error as { response?: { data?: Record<string, string[]> } };
+    return e?.response?.data ?? null;
   }
 
   async function handleScan(lib: LibraryType) {
@@ -157,7 +162,7 @@ export default function AdminLibrariesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-sans">Bibliotecas</h1>
+          <h1 className="font-classic text-2xl font-medium tracking-tight">Bibliotecas</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Gerencie as pastas de arquivos escaneadas pelo sistema.
           </p>
@@ -304,14 +309,19 @@ export default function AdminLibrariesPage() {
               <div>
                 <label className="block text-sm font-medium mb-1.5">
                   Pastas{" "}
-                  <span className="text-muted-foreground font-normal">(uma por linha)</span>
+                  <span className="text-muted-foreground font-normal text-xs">
+                    (uma por linha, ou separadas por espaço)
+                  </span>
                 </label>
                 <textarea
-                  {...register("folder_paths")}
+                  {...register("folder_paths", { required: true })}
                   rows={3}
                   className="w-full px-3 py-2.5 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-                  placeholder="/biblioteca/manga&#10;/biblioteca/livros&#10;/biblioteca/comics"
+                  placeholder={"/biblioteca/manga\n/biblioteca/livros\n/biblioteca/comics"}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use caminhos absolutos começando com /
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -331,11 +341,27 @@ export default function AdminLibrariesPage() {
                 ))}
               </div>
 
-              {(createMutation.isError || updateMutation.isError) && (
-                <p className="text-sm text-red-400">
-                  Erro ao salvar. Verifique os campos e tente novamente.
-                </p>
-              )}
+              {(createMutation.isError || updateMutation.isError) && (() => {
+                const errs = getApiErrors(
+                  createMutation.error ?? updateMutation.error
+                );
+                if (!errs) return (
+                  <p className="text-sm text-red-400">
+                    Erro ao salvar. Tente novamente.
+                  </p>
+                );
+                return (
+                  <div className="space-y-1 p-3 rounded-md bg-red-500/8 border border-red-500/20">
+                    {Object.entries(errs).map(([field, msgs]) => (
+                      <p key={field} className="text-sm text-red-400">
+                        <span className="font-medium capitalize">{field.replace(/_/g, " ")}</span>
+                        {": "}
+                        {Array.isArray(msgs) ? msgs[0] : msgs}
+                      </p>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <div className="flex justify-end gap-3 pt-1">
                 <button

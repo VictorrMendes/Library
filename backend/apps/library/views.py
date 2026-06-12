@@ -25,14 +25,10 @@ class LibraryViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_admin:
-            return Library.objects.all()
-        return user.libraries.all()
+        return Library.objects.all()
 
     def perform_create(self, serializer):
-        library = serializer.save()
-        library.users.add(self.request.user)
+        serializer.save()
 
     @action(detail=True, methods=["post"])
     def scan(self, request, pk=None):
@@ -90,9 +86,7 @@ class SeriesViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         from apps.reader.models import ReadingProgress
         user = self.request.user
-        accessible = (
-            Library.objects.all() if user.is_admin else user.libraries.all()
-        )
+        accessible = Library.objects.all()
         user_progress_sq = (
             ReadingProgress.objects
             .filter(user=user, series=OuterRef("pk"))
@@ -232,7 +226,7 @@ class VolumeViewSet(viewsets.ReadOnlyModelViewSet):
 
     def _accessible_libraries(self):
         user = self.request.user
-        return Library.objects.all() if user.is_admin else user.libraries.all()
+        return Library.objects.all()
 
 
 class ChapterViewSet(viewsets.ReadOnlyModelViewSet):
@@ -245,7 +239,7 @@ class ChapterViewSet(viewsets.ReadOnlyModelViewSet):
 
     def _accessible_libraries(self):
         user = self.request.user
-        return Library.objects.all() if user.is_admin else user.libraries.all()
+        return Library.objects.all()
 
 
 class GenreViewSet(viewsets.ReadOnlyModelViewSet):
