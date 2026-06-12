@@ -1,10 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  BookOpen, Clock, ChevronRight, Play, Heart, Star, Tag,
+  BookOpen, Clock, ChevronRight, Play, Heart, Star, Tag, Trash2, Loader2,
 } from "lucide-react";
 import { seriesApi, readerApi, collectionsApi } from "@/lib/api";
 import type { Series, Volume } from "@/types";
@@ -22,6 +23,7 @@ const STATUS_LABELS: Record<string, string> = {
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const { data: series, isLoading } = useQuery<Series>({
     queryKey: ["series", id],
@@ -38,6 +40,11 @@ export default function SeriesDetailPage() {
     queryKey: ["progress", "series", id],
     queryFn: () => readerApi.seriesProgress(Number(id)).then((r) => r.data),
     enabled: !!series,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => seriesApi.delete(Number(id)),
+    onSuccess: () => router.push("/dashboard"),
   });
 
   const handleContinue = async () => {
@@ -125,7 +132,7 @@ export default function SeriesDetailPage() {
               )}
             </div>
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 mt-4 flex-wrap">
               <button
                 onClick={handleContinue}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
@@ -139,6 +146,13 @@ export default function SeriesDetailPage() {
               >
                 <Heart className="h-4 w-4" />
                 Quero Ler
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-sm font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-colors"
+              >
+                <Trash2 className="h-4 w-4" />
+                Apagar
               </button>
             </div>
           </div>
@@ -197,6 +211,40 @@ export default function SeriesDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(false)} />
+          <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-sm space-y-4 shadow-xl">
+            <h2 className="text-base font-semibold">Apagar série?</h2>
+            <p className="text-sm text-muted-foreground">
+              Tem certeza que deseja apagar{" "}
+              <span className="text-foreground font-medium">"{series.localized_name || series.name}"</span>?{" "}
+              Esta ação não pode ser desfeita. Os arquivos físicos não serão removidos do disco.
+            </p>
+            {deleteMutation.isError && (
+              <p className="text-sm text-red-400">Erro ao apagar. Tente novamente.</p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors disabled:opacity-60"
+              >
+                {deleteMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Apagar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

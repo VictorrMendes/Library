@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -22,6 +22,7 @@ import {
   Swords,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuthStore } from "@/store/auth";
@@ -54,8 +55,14 @@ const adminNav = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, isAdmin } = useAuthStore();
+  const router = useRouter();
+  const { user, isAdmin, logout } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
+
+  function handleLogout() {
+    logout();
+    router.push("/login");
+  }
 
   const { data: libraries = [] } = useQuery<LibraryType[]>({
     queryKey: ["libraries"],
@@ -225,22 +232,31 @@ export function Sidebar() {
         {/* Footer — user profile */}
         {user && (
           <div className="px-2 py-3 border-t border-border shrink-0">
-            <Link
-              href="/profile"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-            >
-              <div className="h-7 w-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold shrink-0">
-                {user.username[0].toUpperCase()}
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="font-medium text-foreground truncate text-xs">
-                  {user.username}
-                </span>
-                <span className="text-xs text-muted-foreground truncate">
-                  {user.email}
-                </span>
-              </div>
-            </Link>
+            <div className="flex items-center gap-1">
+              <Link
+                href="/profile"
+                className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors min-w-0"
+              >
+                <div className="h-7 w-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold shrink-0">
+                  {user.username[0].toUpperCase()}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-medium text-foreground truncate text-xs">
+                    {user.username}
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate">
+                    {user.email}
+                  </span>
+                </div>
+              </Link>
+              <button
+                onClick={handleLogout}
+                title="Sair"
+                className="p-2 rounded-lg text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors shrink-0"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </aside>

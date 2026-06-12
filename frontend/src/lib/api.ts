@@ -71,6 +71,7 @@ export const seriesApi = {
   updateMetadata: (id: number, data: unknown) =>
     api.patch(`/library/series/${id}/metadata/`, data),
   scan: (id: number) => api.post(`/library/series/${id}/scan/`),
+  delete: (id: number) => api.delete(`/library/series/${id}/`),
 };
 
 // ─── Reader ──────────────────────────────────────────────────────────────────
