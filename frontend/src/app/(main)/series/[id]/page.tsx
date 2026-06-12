@@ -156,7 +156,8 @@ export default function SeriesDetailPage() {
 
   const handleContinue = async () => {
     const { data } = await readerApi.continuePoint(Number(id));
-    router.push(`/reader/${data.chapter_id}`);
+    const startPage = data.pages_read > 1 ? data.pages_read - 1 : 0;
+    router.push(`/reader/${data.chapter_id}?page=${startPage}`);
   };
 
   if (isLoading) return <SeriesDetailSkeleton />;

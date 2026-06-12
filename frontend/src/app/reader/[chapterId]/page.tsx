@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, X, Maximize2, Minimize2, Globe, Settings,
@@ -29,18 +29,30 @@ interface ChapterData {
   book_page_base_url?: string;
 }
 
-export default function ReaderPage() {
+function LoadingScreen() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-black">
+      <div className="h-8 w-8 rounded-full border-2 border-white border-t-transparent animate-spin" />
+    </div>
+  );
+}
+
+function ReaderContent() {
   const { chapterId } = useParams<{ chapterId: string }>();
+  const searchParams = useSearchParams();
   const { user, setUser } = useAuthStore();
   const { toggle: toggleTranslator, isOpen: translatorOpen } = useTranslatorStore();
 
-  const [currentPage, setCurrentPage] = useState(0);
+  const initialPage = Math.max(0, parseInt(searchParams.get("page") ?? "0", 10) || 0);
+
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const [mode, setMode] = useState<ReadingMode>(user?.reading_mode ?? "single");
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pdfNumPages, setPdfNumPages] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  // Reader settings (mirror user prefs, saved on change)
+  const [editingPage, setEditingPage] = useState(false);
+  const [inputPage, setInputPage] = useState("");
   const [fontSize, setFontSize] = useState(user?.book_font_size ?? 16);
   const [lineSpacing, setLineSpacing] = useState(user?.book_line_spacing ?? 1.6);
   const [brightness, setBrightness] = useState(100);
@@ -48,11 +60,11 @@ export default function ReaderPage() {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
+  const saveDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: chapterData } = useQuery<ChapterData>({
     queryKey: ["reader", "chapter", chapterId],
-    queryFn: () =>
-      readerApi.chapterImages(Number(chapterId)).then((r) => r.data),
+    queryFn: () => readerApi.chapterImages(Number(chapterId)).then((r) => r.data),
   });
 
   const { mutate: saveProgress } = useMutation({
@@ -64,8 +76,7 @@ export default function ReaderPage() {
   });
 
   const { mutate: savePreferences } = useMutation({
-    mutationFn: (prefs: Record<string, unknown>) =>
-      authApi.updatePreferences(prefs),
+    mutationFn: (prefs: Record<string, unknown>) => authApi.updatePreferences(prefs),
     onSuccess: (res) => setUser(res.data),
   });
 
@@ -82,17 +93,27 @@ export default function ReaderPage() {
     [totalPages, saveProgress]
   );
 
+  // Debounced progress save for PDF scroll tracking
+  const handlePdfPageChange = useCallback(
+    (page: number) => {
+      setCurrentPage(page);
+      if (saveDebounce.current) clearTimeout(saveDebounce.current);
+      saveDebounce.current = setTimeout(() => saveProgress(page), 1500);
+    },
+    [saveProgress]
+  );
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (showSettings) return;
+      if (showSettings || editingPage) return;
       if (e.key === "ArrowRight" || e.key === "d") goTo(currentPage + 1);
       if (e.key === "ArrowLeft" || e.key === "a") goTo(currentPage - 1);
       if (e.key === "Escape") history.back();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [currentPage, goTo, showSettings]);
+  }, [currentPage, goTo, showSettings, editingPage]);
 
   // Touch swipe navigation
   useEffect(() => {
@@ -134,7 +155,7 @@ export default function ReaderPage() {
     }
   };
 
-  // Preload next pages
+  // Preload next pages for image viewer
   useEffect(() => {
     if (format !== "images" || !chapterData?.pages) return;
     const preloadCount = mode === "double" ? 4 : 2;
@@ -150,20 +171,35 @@ export default function ReaderPage() {
     }
   }, [currentPage, format, chapterData, totalPages, chapterId, mode]);
 
-  if (!chapterData) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-black">
-        <div className="h-8 w-8 rounded-full border-2 border-white border-t-transparent animate-spin" />
-      </div>
-    );
-  }
+  if (!chapterData) return <LoadingScreen />;
 
-  const pageLabel =
-    format === "epub"
-      ? `${currentPage + 1} / ${totalPages || "…"}`
-      : format === "pdf"
-      ? `${currentPage + 1} / ${pdfNumPages || "…"}`
-      : `${currentPage + 1} / ${totalPages}`;
+  const pageLabel = `${currentPage + 1} / ${
+    format === "pdf" ? (pdfNumPages || "…") : (totalPages || "…")
+  }`;
+
+  // Clickable progress bar (seek to position)
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (totalPages === 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    goTo(Math.floor(ratio * totalPages));
+  };
+
+  // Page number input submit
+  const handlePageInputSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const p = parseInt(inputPage, 10) - 1;
+    if (!isNaN(p)) goTo(p);
+    setEditingPage(false);
+  };
+
+  const progressPct = totalPages > 0 ? ((currentPage + 1) / totalPages) * 100 : 0;
+
+  const navButtonClass = (visible: boolean) =>
+    clsx(
+      "fixed top-0 h-full w-16 flex items-center transition-all z-40",
+      visible ? "opacity-100" : "opacity-0 pointer-events-none"
+    );
 
   return (
     <div
@@ -172,13 +208,11 @@ export default function ReaderPage() {
       onMouseMove={showControlsTemporarily}
       onClick={showControlsTemporarily}
     >
-      {/* ── Top bar ─────────────────────────────────────────────── */}
+      {/* ── Top bar ──────────────────────────────────────────────────── */}
       <div
         className={clsx(
           "fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-sm transition-all duration-300",
-          showControls
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 -translate-y-full pointer-events-none"
+          showControls ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-full pointer-events-none"
         )}
       >
         <button
@@ -187,37 +221,52 @@ export default function ReaderPage() {
         >
           <X className="h-5 w-5" />
         </button>
-        <div className="text-white/70 text-sm">{pageLabel}</div>
+
+        {/* Page indicator — click to jump */}
+        {editingPage ? (
+          <form onSubmit={handlePageInputSubmit} onClick={(e) => e.stopPropagation()}>
+            <input
+              autoFocus
+              type="number"
+              min={1}
+              max={totalPages || undefined}
+              value={inputPage}
+              onChange={(e) => setInputPage(e.target.value)}
+              onBlur={() => setEditingPage(false)}
+              className="w-24 text-center bg-white/10 text-white text-sm border border-white/20 rounded-md px-2 py-1 focus:outline-none focus:border-primary"
+            />
+          </form>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setInputPage(String(currentPage + 1));
+              setEditingPage(true);
+            }}
+            title="Clique para ir a uma página"
+            className="text-white/70 text-sm hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
+          >
+            {pageLabel}
+          </button>
+        )}
+
         <div className="flex items-center gap-2">
           <button
             onClick={toggleTranslator}
             title="Tradutor"
-            className={clsx(
-              "p-2 transition-colors",
-              translatorOpen ? "text-primary" : "text-white/70 hover:text-white"
-            )}
+            className={clsx("p-2 transition-colors", translatorOpen ? "text-primary" : "text-white/70 hover:text-white")}
           >
             <Globe className="h-5 w-5" />
           </button>
           <button
             onClick={() => setShowSettings((v) => !v)}
             title="Configurações"
-            className={clsx(
-              "p-2 transition-colors",
-              showSettings ? "text-primary" : "text-white/70 hover:text-white"
-            )}
+            className={clsx("p-2 transition-colors", showSettings ? "text-primary" : "text-white/70 hover:text-white")}
           >
             <Settings className="h-5 w-5" />
           </button>
-          <button
-            onClick={toggleFullscreen}
-            className="p-2 text-white/70 hover:text-white"
-          >
-            {isFullscreen ? (
-              <Minimize2 className="h-5 w-5" />
-            ) : (
-              <Maximize2 className="h-5 w-5" />
-            )}
+          <button onClick={toggleFullscreen} className="p-2 text-white/70 hover:text-white">
+            {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
           </button>
           {format === "images" && (
             <div className="flex bg-white/10 rounded-lg p-0.5 gap-0.5">
@@ -227,9 +276,7 @@ export default function ReaderPage() {
                   onClick={() => setMode(m)}
                   className={clsx(
                     "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                    mode === m
-                      ? "bg-white text-black"
-                      : "text-white/70 hover:text-white"
+                    mode === m ? "bg-white text-black" : "text-white/70 hover:text-white"
                   )}
                 >
                   {m === "single" ? "1" : m === "double" ? "2" : "∞"}
@@ -240,11 +287,10 @@ export default function ReaderPage() {
         </div>
       </div>
 
-      {/* ── Settings panel ──────────────────────────────────────── */}
+      {/* ── Settings panel ───────────────────────────────────────────── */}
       {showSettings && (
         <div className="fixed top-14 right-4 z-50 w-72 bg-black/90 border border-white/10 rounded-xl p-4 space-y-4 backdrop-blur-sm">
           <p className="text-sm font-semibold text-white">Configurações de leitura</p>
-
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-white/60">
               <span>Brilho</span><span>{brightness}%</span>
@@ -253,7 +299,6 @@ export default function ReaderPage() {
               onChange={(e) => setBrightness(Number(e.target.value))}
               className="w-full accent-primary" />
           </div>
-
           {format === "epub" && (
             <>
               <div className="space-y-1">
@@ -265,7 +310,6 @@ export default function ReaderPage() {
                   onMouseUp={() => savePreferences({ book_font_size: fontSize })}
                   className="w-full accent-primary" />
               </div>
-
               <div className="space-y-1">
                 <div className="flex justify-between text-xs text-white/60">
                   <span>Espaçamento entre linhas</span><span>{lineSpacing.toFixed(1)}</span>
@@ -280,7 +324,7 @@ export default function ReaderPage() {
         </div>
       )}
 
-      {/* ── EPUB Viewer (iframe) ─────────────────────────────────── */}
+      {/* ── EPUB Viewer ──────────────────────────────────────────────── */}
       {format === "epub" && chapterData.book_page_base_url && (
         <>
           <iframe
@@ -293,11 +337,7 @@ export default function ReaderPage() {
           <button
             onClick={() => goTo(currentPage - 1)}
             disabled={currentPage === 0}
-            className={clsx(
-              "fixed left-0 top-0 h-full w-16 flex items-center justify-start pl-3 transition-opacity z-40",
-              showControls ? "opacity-100" : "opacity-0",
-              currentPage === 0 ? "cursor-default" : "cursor-pointer"
-            )}
+            className={clsx(navButtonClass(showControls), "left-0 justify-start pl-3", currentPage === 0 && "cursor-default")}
           >
             <div className="bg-black/50 rounded-full p-2 backdrop-blur-sm">
               <ChevronLeft className="h-6 w-6 text-white" />
@@ -306,11 +346,7 @@ export default function ReaderPage() {
           <button
             onClick={() => goTo(currentPage + 1)}
             disabled={currentPage >= totalPages - 1}
-            className={clsx(
-              "fixed right-0 top-0 h-full w-16 flex items-center justify-end pr-3 transition-opacity z-40",
-              showControls ? "opacity-100" : "opacity-0",
-              currentPage >= totalPages - 1 ? "cursor-default" : "cursor-pointer"
-            )}
+            className={clsx(navButtonClass(showControls), "right-0 justify-end pr-3", currentPage >= totalPages - 1 && "cursor-default")}
           >
             <div className="bg-black/50 rounded-full p-2 backdrop-blur-sm">
               <ChevronRight className="h-6 w-6 text-white" />
@@ -319,20 +355,44 @@ export default function ReaderPage() {
         </>
       )}
 
-      {/* ── PDF Viewer ──────────────────────────────────────────── */}
+      {/* ── PDF Viewer ───────────────────────────────────────────────── */}
       {format === "pdf" && chapterData.pdf_url && (
-        <div
-          className="flex flex-col items-center gap-4 overflow-auto bg-neutral-900 min-h-screen"
-          style={{ paddingTop: "64px", paddingBottom: "32px" }}
-        >
-          <PdfViewer
-            pdfUrl={chapterData.pdf_url}
-            onNumPages={setPdfNumPages}
-          />
-        </div>
+        <>
+          <div
+            className="flex flex-col items-center gap-0 overflow-auto bg-neutral-900 min-h-screen"
+            style={{ paddingTop: "64px", paddingBottom: "64px" }}
+          >
+            <PdfViewer
+              pdfUrl={chapterData.pdf_url}
+              currentPage={currentPage}
+              onNumPages={setPdfNumPages}
+              onPageChange={handlePdfPageChange}
+            />
+          </div>
+
+          {/* PDF prev/next buttons */}
+          <button
+            onClick={() => goTo(currentPage - 1)}
+            disabled={currentPage === 0}
+            className={clsx(navButtonClass(showControls), "left-0 justify-start pl-3", currentPage === 0 && "cursor-default")}
+          >
+            <div className="bg-black/50 rounded-full p-2 backdrop-blur-sm">
+              <ChevronLeft className="h-6 w-6 text-white" />
+            </div>
+          </button>
+          <button
+            onClick={() => goTo(currentPage + 1)}
+            disabled={currentPage >= pdfNumPages - 1}
+            className={clsx(navButtonClass(showControls), "right-0 justify-end pr-3", currentPage >= pdfNumPages - 1 && "cursor-default")}
+          >
+            <div className="bg-black/50 rounded-full p-2 backdrop-blur-sm">
+              <ChevronRight className="h-6 w-6 text-white" />
+            </div>
+          </button>
+        </>
       )}
 
-      {/* ── Image Viewer (CBZ / archive) ────────────────────────── */}
+      {/* ── Image Viewer (CBZ / archive) ──────────────────────────────── */}
       {(format === "images" || !chapterData.format) && (
         <>
           {mode === "webtoon" ? (
@@ -340,10 +400,7 @@ export default function ReaderPage() {
               {Array.from({ length: totalPages }, (_, i) => (
                 <img
                   key={i}
-                  src={
-                    chapterData.pages?.[i] ??
-                    readerApi.imageUrl(Number(chapterId), i)
-                  }
+                  src={chapterData.pages?.[i] ?? readerApi.imageUrl(Number(chapterId), i)}
                   alt={`Página ${i + 1}`}
                   className="w-full max-w-2xl"
                   loading={i < 3 ? "eager" : "lazy"}
@@ -352,26 +409,15 @@ export default function ReaderPage() {
             </div>
           ) : (
             <div className="flex items-center justify-center min-h-screen">
-              <div
-                className={clsx(
-                  "flex gap-0",
-                  mode === "double" ? "max-w-6xl" : "max-w-3xl"
-                )}
-              >
+              <div className={clsx("flex gap-0", mode === "double" ? "max-w-6xl" : "max-w-3xl")}>
                 <img
-                  src={
-                    chapterData.pages?.[currentPage] ??
-                    readerApi.imageUrl(Number(chapterId), currentPage)
-                  }
+                  src={chapterData.pages?.[currentPage] ?? readerApi.imageUrl(Number(chapterId), currentPage)}
                   alt={`Página ${currentPage + 1}`}
                   className="h-screen object-contain"
                 />
                 {mode === "double" && currentPage + 1 < totalPages && (
                   <img
-                    src={
-                      chapterData.pages?.[currentPage + 1] ??
-                      readerApi.imageUrl(Number(chapterId), currentPage + 1)
-                    }
+                    src={chapterData.pages?.[currentPage + 1] ?? readerApi.imageUrl(Number(chapterId), currentPage + 1)}
                     alt={`Página ${currentPage + 2}`}
                     className="h-screen object-contain"
                   />
@@ -383,32 +429,18 @@ export default function ReaderPage() {
           {mode !== "webtoon" && (
             <>
               <button
-                onClick={() =>
-                  goTo(currentPage - (mode === "double" ? 2 : 1))
-                }
+                onClick={() => goTo(currentPage - (mode === "double" ? 2 : 1))}
                 disabled={currentPage === 0}
-                className={clsx(
-                  "fixed left-0 top-0 h-full w-16 flex items-center justify-start pl-3 transition-all",
-                  showControls ? "opacity-100" : "opacity-0",
-                  currentPage === 0 ? "cursor-default" : "cursor-pointer"
-                )}
+                className={clsx(navButtonClass(showControls), "left-0 justify-start pl-3", currentPage === 0 && "cursor-default")}
               >
                 <div className="bg-black/50 rounded-full p-2 backdrop-blur-sm">
                   <ChevronLeft className="h-6 w-6 text-white" />
                 </div>
               </button>
               <button
-                onClick={() =>
-                  goTo(currentPage + (mode === "double" ? 2 : 1))
-                }
+                onClick={() => goTo(currentPage + (mode === "double" ? 2 : 1))}
                 disabled={currentPage >= totalPages - 1}
-                className={clsx(
-                  "fixed right-0 top-0 h-full w-16 flex items-center justify-end pr-3 transition-all",
-                  showControls ? "opacity-100" : "opacity-0",
-                  currentPage >= totalPages - 1
-                    ? "cursor-default"
-                    : "cursor-pointer"
-                )}
+                className={clsx(navButtonClass(showControls), "right-0 justify-end pr-3", currentPage >= totalPages - 1 && "cursor-default")}
               >
                 <div className="bg-black/50 rounded-full p-2 backdrop-blur-sm">
                   <ChevronRight className="h-6 w-6 text-white" />
@@ -416,24 +448,33 @@ export default function ReaderPage() {
               </button>
             </>
           )}
-
-          <div
-            className={clsx(
-              "fixed bottom-0 left-0 right-0 h-1 bg-white/10 transition-opacity duration-300",
-              showControls ? "opacity-100" : "opacity-0"
-            )}
-          >
-            <div
-              className="h-full bg-primary transition-all duration-200"
-              style={{
-                width: totalPages
-                  ? `${((currentPage + 1) / totalPages) * 100}%`
-                  : "0%",
-              }}
-            />
-          </div>
         </>
       )}
+
+      {/* ── Progress bar (all formats except webtoon) ─────────────────── */}
+      {!(format === "images" && mode === "webtoon") && (
+        <div
+          className={clsx(
+            "fixed bottom-0 left-0 right-0 h-1.5 bg-white/10 cursor-pointer transition-opacity duration-300 z-40",
+            showControls ? "opacity-100" : "opacity-0 pointer-events-none"
+          )}
+          onClick={handleProgressClick}
+          title={`Ir para página (${Math.round(progressPct)}%)`}
+        >
+          <div
+            className="h-full bg-primary transition-all duration-200"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+export default function ReaderPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <ReaderContent />
+    </Suspense>
   );
 }
