@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, X, Maximize2, Minimize2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Maximize2, Minimize2, Globe } from "lucide-react";
 import dynamic from "next/dynamic";
 import { readerApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useTranslatorStore } from "@/store/translator";
 import { clsx } from "clsx";
 
 // Carregado apenas no cliente — pdfjs não funciona no Node.js 20 via SSR
@@ -30,6 +31,7 @@ interface ChapterData {
 export default function ReaderPage() {
   const { chapterId } = useParams<{ chapterId: string }>();
   const { user } = useAuthStore();
+  const { toggle: toggleTranslator, isOpen: translatorOpen } = useTranslatorStore();
 
   const [currentPage, setCurrentPage] = useState(0);
   const [mode, setMode] = useState<ReadingMode>(user?.reading_mode ?? "single");
@@ -130,6 +132,16 @@ export default function ReaderPage() {
         </button>
         <div className="text-white/70 text-sm">{pageLabel}</div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleTranslator}
+            title="Tradutor"
+            className={clsx(
+              "p-2 transition-colors",
+              translatorOpen ? "text-primary" : "text-white/70 hover:text-white"
+            )}
+          >
+            <Globe className="h-5 w-5" />
+          </button>
           <button
             onClick={toggleFullscreen}
             className="p-2 text-white/70 hover:text-white"
