@@ -406,6 +406,7 @@ def series_progress(request, series_id):
 
 class BookmarkListCreateView(generics.ListCreateAPIView):
     serializer_class = BookmarkSerializer
+    pagination_class = None
 
     def get_queryset(self):
         return Bookmark.objects.filter(user=self.request.user)
@@ -425,6 +426,7 @@ class BookmarkDestroyView(generics.DestroyAPIView):
 
 class AnnotationListCreateView(generics.ListCreateAPIView):
     serializer_class = AnnotationSerializer
+    pagination_class = None
 
     def get_queryset(self):
         chapter_id = self.request.query_params.get("chapter_id")

@@ -1,22 +1,29 @@
 from django.db import models
 from django.conf import settings
 
+AUTH = settings.AUTH_USER_MODEL
+
 
 class ReadingProgress(models.Model):
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="progress"
+        AUTH, on_delete=models.CASCADE, related_name="progress"
     )
     chapter = models.ForeignKey(
-        "library.Chapter", on_delete=models.CASCADE, related_name="progress"
+        "library.Chapter",
+        on_delete=models.CASCADE,
+        related_name="progress",
     )
     series = models.ForeignKey(
-        "library.Series", on_delete=models.CASCADE, related_name="progress"
+        "library.Series",
+        on_delete=models.CASCADE,
+        related_name="progress",
     )
     library = models.ForeignKey(
-        "library.Library", on_delete=models.CASCADE, related_name="progress"
+        "library.Library",
+        on_delete=models.CASCADE,
+        related_name="progress",
     )
     pages_read = models.IntegerField(default=0)
-    # For EPUB: CSS anchor ID of last position
     book_scroll_id = models.CharField(max_length=500, blank=True)
     total_reads = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -31,7 +38,10 @@ class ReadingProgress(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.user.username} — Ch.{self.chapter_id} ({self.pages_read}p)"
+        return (
+            f"{self.user.username} — "
+            f"Ch.{self.chapter_id} ({self.pages_read}p)"
+        )
 
     @property
     def is_completed(self):
@@ -40,13 +50,19 @@ class ReadingProgress(models.Model):
 
 class ReadingSession(models.Model):
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reading_sessions"
+        AUTH,
+        on_delete=models.CASCADE,
+        related_name="reading_sessions",
     )
     series = models.ForeignKey(
-        "library.Series", on_delete=models.CASCADE, related_name="reading_sessions"
+        "library.Series",
+        on_delete=models.CASCADE,
+        related_name="reading_sessions",
     )
     chapter = models.ForeignKey(
-        "library.Chapter", on_delete=models.CASCADE, related_name="reading_sessions"
+        "library.Chapter",
+        on_delete=models.CASCADE,
+        related_name="reading_sessions",
     )
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
@@ -57,24 +73,27 @@ class ReadingSession(models.Model):
         ordering = ["-started_at"]
 
     def __str__(self):
-        return f"{self.user.username} — {self.series.name} @ {self.started_at:%Y-%m-%d %H:%M}"
+        ts = self.started_at.strftime("%Y-%m-%d %H:%M")
+        return f"{self.user.username} — {self.series.name} @ {ts}"
 
     @property
     def duration_minutes(self):
         if self.ended_at:
-            return int((self.ended_at - self.started_at).total_seconds() / 60)
+            delta = self.ended_at - self.started_at
+            return int(delta.total_seconds() / 60)
         return 0
 
 
 class Bookmark(models.Model):
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="bookmarks"
+        AUTH, on_delete=models.CASCADE, related_name="bookmarks"
     )
     chapter = models.ForeignKey(
-        "library.Chapter", on_delete=models.CASCADE, related_name="bookmarks"
+        "library.Chapter",
+        on_delete=models.CASCADE,
+        related_name="bookmarks",
     )
     page = models.IntegerField(default=0)
-    # For EPUB bookmarks
     book_scroll_id = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -84,18 +103,21 @@ class Bookmark(models.Model):
         ordering = ["chapter", "page"]
 
     def __str__(self):
-        return f"{self.user.username} — Ch.{self.chapter_id} p.{self.page}"
+        return (
+            f"{self.user.username} — Ch.{self.chapter_id} p.{self.page}"
+        )
 
 
 class Annotation(models.Model):
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="annotations"
+        AUTH, on_delete=models.CASCADE, related_name="annotations"
     )
     chapter = models.ForeignKey(
-        "library.Chapter", on_delete=models.CASCADE, related_name="annotations"
+        "library.Chapter",
+        on_delete=models.CASCADE,
+        related_name="annotations",
     )
-    # EPUB-only: selected text anchor
-    book_scroll_id = models.CharField(max_length=500)
+    book_scroll_id = models.CharField(max_length=500, blank=True)
     highlighted_text = models.TextField(blank=True)
     note = models.TextField(blank=True)
     color = models.CharField(max_length=7, default="#facc15")

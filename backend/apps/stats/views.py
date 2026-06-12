@@ -1,7 +1,9 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import generics
-from .models import ReadingHistory, UserStats
+from rest_framework import generics, permissions
+from rest_framework.views import APIView
+from django.utils import timezone
+from .models import ReadingHistory, UserStats, ReadingGoal
 from .serializers import ReadingHistorySerializer, UserStatsSerializer
 
 
@@ -33,3 +35,55 @@ def series_stats(request, series_id):
         "total_pages_read": total_pages,
         "chapters_read": chapters_read,
     })
+
+
+class ReadingGoalView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        now = timezone.now()
+        goals = ReadingGoal.objects.filter(
+            user=request.user, year=now.year
+        )
+        data = []
+        for g in goals:
+            data.append({
+                "id": g.id,
+                "period": g.period,
+                "metric": g.metric,
+                "target": g.target,
+                "year": g.year,
+                "month": g.month,
+                "progress": g.progress,
+            })
+        return Response(data)
+
+    def post(self, request):
+        now = timezone.now()
+        period = request.data.get("period", "monthly")
+        metric = request.data.get("metric", "pages")
+        target = int(request.data.get("target", 0))
+        month = now.month if period == "monthly" else None
+        goal, _ = ReadingGoal.objects.update_or_create(
+            user=request.user,
+            period=period,
+            metric=metric,
+            year=now.year,
+            month=month,
+            defaults={"target": target},
+        )
+        return Response({
+            "id": goal.id,
+            "period": goal.period,
+            "metric": goal.metric,
+            "target": goal.target,
+            "year": goal.year,
+            "month": goal.month,
+            "progress": goal.progress,
+        }, status=201)
+
+    def delete(self, request, goal_id):
+        ReadingGoal.objects.filter(
+            user=request.user, id=goal_id
+        ).delete()
+        return Response(status=204)

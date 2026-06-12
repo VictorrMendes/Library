@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from apps.library.models import Chapter
 from .models import ReadingProgress, ReadingSession, Bookmark, Annotation
 
 
@@ -12,16 +13,24 @@ class ReadingProgressSerializer(serializers.ModelSerializer):
             "pages_read", "book_scroll_id", "total_reads",
             "is_completed", "created_at", "last_modified",
         ]
-        read_only_fields = ["id", "created_at", "last_modified", "total_reads"]
+        read_only_fields = [
+            "id", "created_at", "last_modified", "total_reads",
+        ]
 
 
 class UpdateProgressSerializer(serializers.Serializer):
     chapter_id = serializers.IntegerField()
     pages_read = serializers.IntegerField(min_value=0)
-    book_scroll_id = serializers.CharField(required=False, allow_blank=True)
+    book_scroll_id = serializers.CharField(
+        required=False, allow_blank=True
+    )
 
 
 class BookmarkSerializer(serializers.ModelSerializer):
+    chapter_id = serializers.PrimaryKeyRelatedField(
+        queryset=Chapter.objects.all(), source="chapter"
+    )
+
     class Meta:
         model = Bookmark
         fields = ["id", "chapter_id", "page", "book_scroll_id", "created_at"]
@@ -29,6 +38,10 @@ class BookmarkSerializer(serializers.ModelSerializer):
 
 
 class AnnotationSerializer(serializers.ModelSerializer):
+    chapter_id = serializers.PrimaryKeyRelatedField(
+        queryset=Chapter.objects.all(), source="chapter"
+    )
+
     class Meta:
         model = Annotation
         fields = [

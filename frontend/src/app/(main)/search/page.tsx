@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { Search, X, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { seriesApi, libraryApi } from "@/lib/api";
 import { SeriesGrid } from "@/components/series/SeriesGrid";
+import { GridSizeControl } from "@/components/ui/GridSizeControl";
 import type { Library, Series, PaginatedResponse } from "@/types";
 import { clsx } from "clsx";
 
@@ -37,12 +39,17 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 export default function SearchPage() {
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [libraryId, setLibraryId] = useState("");
   const [status, setStatus] = useState("");
+  const [genre, setGenre] = useState(searchParams.get("genre") ?? "");
+  const [tag, setTag] = useState(searchParams.get("tag") ?? "");
   const [ordering, setOrdering] = useState("sort_name");
   const [page, setPage] = useState(1);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(
+    !!(searchParams.get("genre") || searchParams.get("tag"))
+  );
   const inputRef = useRef<HTMLInputElement>(null);
 
   const debouncedQuery = useDebounce(query, 350);
@@ -63,7 +70,7 @@ export default function SearchPage() {
   // Reset page on filter changes
   useEffect(() => {
     setPage(1);
-  }, [debouncedQuery, libraryId, status, ordering]);
+  }, [debouncedQuery, libraryId, status, ordering, genre, tag]);
 
   const { data: libraries = [] } = useQuery<Library[]>({
     queryKey: ["libraries"],
@@ -78,11 +85,13 @@ export default function SearchPage() {
   if (debouncedQuery) params.search = debouncedQuery;
   if (libraryId) params.library = libraryId;
   if (status) params.status = status;
+  if (genre) params.genre = genre;
+  if (tag) params.tag = tag;
 
-  const hasFilters = !!debouncedQuery || !!libraryId || !!status;
+  const hasFilters = !!debouncedQuery || !!libraryId || !!status || !!genre || !!tag;
 
   const { data, isLoading, isFetching } = useQuery<PaginatedResponse<Series>>({
-    queryKey: ["series", "search", debouncedQuery, libraryId, status, ordering, page],
+    queryKey: ["series", "search", debouncedQuery, libraryId, status, genre, tag, ordering, page],
     queryFn: () => seriesApi.list(params).then((r) => r.data),
     enabled: hasFilters,
   });
@@ -94,12 +103,14 @@ export default function SearchPage() {
     setQuery("");
     setLibraryId("");
     setStatus("");
+    setGenre("");
+    setTag("");
     setOrdering("sort_name");
     setPage(1);
     inputRef.current?.focus();
   }
 
-  const activeFilterCount = [libraryId, status].filter(Boolean).length;
+  const activeFilterCount = [libraryId, status, genre, tag].filter(Boolean).length;
 
   return (
     <div className="p-6 space-y-6 max-w-screen-2xl">
@@ -113,6 +124,7 @@ export default function SearchPage() {
 
       {/* Search input */}
       <div className="flex items-center gap-3">
+        <GridSizeControl />
         <div className="relative flex-1 max-w-xl">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input
@@ -189,6 +201,26 @@ export default function SearchPage() {
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground font-medium">Gênero</label>
+            <input
+              value={genre}
+              onChange={(e) => setGenre(e.target.value)}
+              placeholder="ex: Action"
+              className="px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary min-w-[140px]"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground font-medium">Tag</label>
+            <input
+              value={tag}
+              onChange={(e) => setTag(e.target.value)}
+              placeholder="ex: Adventure"
+              className="px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary min-w-[140px]"
+            />
           </div>
 
           <div className="flex flex-col gap-1">

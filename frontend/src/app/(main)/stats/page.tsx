@@ -1,10 +1,21 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { BookOpen, TrendingUp, Library, Clock, Calendar, ArrowRight } from "lucide-react";
+import { BookOpen, TrendingUp, Library, Clock, Calendar, ArrowRight, Flame, Target, Plus, Trash2 } from "lucide-react";
 import { statsApi } from "@/lib/api";
 import type { UserStats } from "@/types";
+
+interface ReadingGoal {
+  id: number;
+  period: "monthly" | "yearly";
+  metric: "pages" | "chapters";
+  target: number;
+  year: number;
+  month: number | null;
+  progress: number;
+}
 
 interface ReadingHistory {
   id: number;
@@ -51,6 +62,20 @@ function MiniBar({ value, max }: { value: number; max: number }) {
   );
 }
 
+function computeStreak(history: ReadingHistory[]): number {
+  if (!history.length) return 0;
+  const days = new Set(history.map((h) => h.read_at.slice(0, 10)));
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    if (days.has(d.toISOString().slice(0, 10))) streak++;
+    else if (i > 0) break;
+  }
+  return streak;
+}
+
 export default function StatsPage() {
   const { data: stats, isLoading: statsLoading } = useQuery<UserStats>({
     queryKey: ["stats", "me"],
@@ -60,6 +85,34 @@ export default function StatsPage() {
   const { data: history = [], isLoading: historyLoading } = useQuery<ReadingHistory[]>({
     queryKey: ["stats", "history"],
     queryFn: () => statsApi.history().then((r) => r.data.results as ReadingHistory[]),
+  });
+
+  const streak = computeStreak(history);
+
+  const queryClient = useQueryClient();
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [goalForm, setGoalForm] = useState({ period: "monthly", metric: "pages", target: "500" });
+
+  const { data: goals = [] } = useQuery<ReadingGoal[]>({
+    queryKey: ["stats", "goals"],
+    queryFn: () => statsApi.goals().then((r) => r.data),
+  });
+
+  const createGoalMutation = useMutation({
+    mutationFn: () => statsApi.createGoal({
+      period: goalForm.period,
+      metric: goalForm.metric,
+      target: Number(goalForm.target),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["stats", "goals"] });
+      setShowGoalForm(false);
+    },
+  });
+
+  const deleteGoalMutation = useMutation({
+    mutationFn: (id: number) => statsApi.deleteGoal(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["stats", "goals"] }),
   });
 
   // Group history by date for a simple bar chart (last 30 days)
@@ -100,6 +153,17 @@ export default function StatsPage() {
         <p className="text-sm text-muted-foreground mt-0.5">Seu histórico de leitura.</p>
       </div>
 
+      {/* Streak */}
+      {streak > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-orange-500/10 border border-orange-500/20 rounded-xl w-fit">
+          <Flame className="h-5 w-5 text-orange-400 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-orange-400">{streak} {streak === 1 ? "dia" : "dias"} de sequência</p>
+            <p className="text-xs text-muted-foreground">Você leu algo nos últimos {streak} dias consecutivos</p>
+          </div>
+        </div>
+      )}
+
       {/* Summary cards */}
       {statsLoading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -132,6 +196,90 @@ export default function StatsPage() {
           />
         </div>
       ) : null}
+
+      {/* Reading goals */}
+      <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Target className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">Metas de leitura</h2>
+          </div>
+          <button
+            onClick={() => setShowGoalForm((v) => !v)}
+            className="flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            <Plus className="h-3 w-3" />
+            Nova meta
+          </button>
+        </div>
+
+        {showGoalForm && (
+          <div className="flex flex-wrap gap-3 p-3 bg-muted/30 rounded-lg">
+            <select
+              value={goalForm.period}
+              onChange={(e) => setGoalForm((f) => ({ ...f, period: e.target.value }))}
+              className="px-2 py-1.5 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="monthly">Mensal</option>
+              <option value="yearly">Anual</option>
+            </select>
+            <select
+              value={goalForm.metric}
+              onChange={(e) => setGoalForm((f) => ({ ...f, metric: e.target.value }))}
+              className="px-2 py-1.5 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="pages">Páginas</option>
+              <option value="chapters">Capítulos</option>
+            </select>
+            <input
+              type="number"
+              value={goalForm.target}
+              onChange={(e) => setGoalForm((f) => ({ ...f, target: e.target.value }))}
+              placeholder="Meta"
+              className="w-24 px-2 py-1.5 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <button
+              onClick={() => createGoalMutation.mutate()}
+              disabled={createGoalMutation.isPending}
+              className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+            >
+              Criar
+            </button>
+          </div>
+        )}
+
+        {goals.length === 0 && !showGoalForm ? (
+          <p className="text-sm text-muted-foreground text-center py-4">Nenhuma meta definida ainda.</p>
+        ) : (
+          <div className="space-y-3">
+            {goals.map((g) => {
+              const pct = Math.min(100, Math.round((g.progress / g.target) * 100));
+              return (
+                <div key={g.id} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium">
+                      {g.period === "monthly" ? "Mensal" : "Anual"} — {g.metric === "pages" ? "Páginas" : "Capítulos"}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">{g.progress.toLocaleString("pt-BR")} / {g.target.toLocaleString("pt-BR")}</span>
+                      <span className={pct >= 100 ? "text-green-400 font-semibold" : "text-primary"}>{pct}%</span>
+                      <button onClick={() => deleteGoalMutation.mutate(g.id)} className="text-muted-foreground hover:text-red-400">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? "bg-green-500" : "bg-primary"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Daily chart */}
       <div className="bg-card border border-border rounded-xl p-5 space-y-4">

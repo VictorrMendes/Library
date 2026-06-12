@@ -77,6 +77,7 @@ export interface Series {
   library_id: number;
   metadata: SeriesMetadata | null;
   avg_hours_to_read: number;
+  user_progress_pct: number;
   created_at: string;
   last_modified: string;
 }

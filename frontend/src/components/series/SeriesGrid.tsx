@@ -1,6 +1,9 @@
 "use client";
 
 import { SeriesCard } from "./SeriesCard";
+import { SeriesCardSkeleton } from "@/components/ui/Skeleton";
+import { useGridStore, GRID_COLS } from "@/store/grid";
+import { clsx } from "clsx";
 import type { Series } from "@/types";
 
 interface Props {
@@ -9,15 +12,14 @@ interface Props {
 }
 
 export function SeriesGrid({ series, loading }: Props) {
+  const { size } = useGridStore();
+  const cols = GRID_COLS[size];
+
   if (loading) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
+      <div className={clsx("grid gap-3 sm:gap-4", cols)}>
         {Array.from({ length: 24 }).map((_, i) => (
-          <div key={i} className="space-y-2">
-            <div className="aspect-[2/3] rounded-lg bg-muted animate-pulse" />
-            <div className="h-3 bg-muted rounded animate-pulse w-3/4" />
-            <div className="h-2.5 bg-muted rounded animate-pulse w-1/2" />
-          </div>
+          <SeriesCardSkeleton key={i} />
         ))}
       </div>
     );
@@ -32,7 +34,7 @@ export function SeriesGrid({ series, loading }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
+    <div className={clsx("grid gap-3 sm:gap-4", cols)}>
       {series.map((s) => (
         <SeriesCard key={s.id} series={s} showStatus />
       ))}

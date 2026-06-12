@@ -24,6 +24,8 @@ import {
   X,
   LogOut,
   Globe,
+  Layers,
+  Hash,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuthStore } from "@/store/auth";
@@ -42,6 +44,8 @@ const LIBRARY_ICONS: Record<string, React.ElementType> = {
 const mainNav = [
   { href: "/dashboard", icon: Home, label: "Dashboard" },
   { href: "/search", icon: Search, label: "Buscar" },
+  { href: "/genres", icon: Layers, label: "Gêneros" },
+  { href: "/tags", icon: Hash, label: "Tags" },
   { href: "/collections", icon: FolderOpen, label: "Coleções" },
   { href: "/reading-lists", icon: List, label: "Listas de Leitura" },
   { href: "/want-to-read", icon: Heart, label: "Quero Ler" },

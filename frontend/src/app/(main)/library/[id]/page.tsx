@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw, Library, Loader2 } from "lucide-react";
+import { ArrowLeft, RefreshCw, Library, Loader2, CheckSquare, Trash2, X } from "lucide-react";
 import { libraryApi, seriesApi } from "@/lib/api";
 import { SeriesGrid } from "@/components/series/SeriesGrid";
+import { SelectableSeriesGrid } from "@/components/series/SelectableSeriesGrid";
+import { GridSizeControl } from "@/components/ui/GridSizeControl";
 import type { Library as LibraryType, Series, PaginatedResponse } from "@/types";
 import { clsx } from "clsx";
 
@@ -37,6 +39,29 @@ export default function LibraryPage() {
   const [ordering, setOrdering] = useState("sort_name");
   const [page, setPage] = useState(1);
   const [scanning, setScanning] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const queryClient = useQueryClient();
+
+  const toggleSelect = useCallback((id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const deleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      for (const id of ids) await seriesApi.delete(id);
+    },
+    onSuccess: () => {
+      setSelected(new Set());
+      setSelectMode(false);
+      queryClient.invalidateQueries({ queryKey: ["series", "library", libraryId] });
+    },
+  });
 
   const { data: library } = useQuery<LibraryType>({
     queryKey: ["library", libraryId],
@@ -105,18 +130,33 @@ export default function LibraryPage() {
           </div>
         </div>
 
-        <button
-          onClick={handleScan}
-          disabled={scanning}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors disabled:opacity-60 shrink-0"
-        >
-          {scanning ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          <span className="hidden sm:inline">Escanear</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <GridSizeControl />
+          <button
+            onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
+            title="Selecionar"
+            className={clsx(
+              "p-2 rounded-lg border text-sm transition-colors",
+              selectMode
+                ? "bg-primary/10 border-primary/30 text-primary"
+                : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+            )}
+          >
+            <CheckSquare className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleScan}
+            disabled={scanning}
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors disabled:opacity-60"
+          >
+            {scanning ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">Escanear</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -142,8 +182,48 @@ export default function LibraryPage() {
         </select>
       </div>
 
+      {/* Bulk action toolbar */}
+      {selectMode && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/5 border border-primary/20 rounded-xl">
+          <span className="text-sm text-muted-foreground flex-1">
+            {selected.size} {selected.size === 1 ? "série selecionada" : "séries selecionadas"}
+          </span>
+          {selected.size > 0 && (
+            <button
+              onClick={() => {
+                if (confirm(`Apagar ${selected.size} série(s)?`)) {
+                  deleteMutation.mutate(Array.from(selected));
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-colors disabled:opacity-60"
+            >
+              {deleteMutation.isPending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Trash2 className="h-3.5 w-3.5" />}
+              Apagar
+            </button>
+          )}
+          <button
+            onClick={() => { setSelectMode(false); setSelected(new Set()); }}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Grid */}
-      <SeriesGrid series={series} loading={isLoading} />
+      {selectMode ? (
+        <SelectableSeriesGrid
+          series={series}
+          loading={isLoading}
+          selected={selected}
+          onToggle={toggleSelect}
+        />
+      ) : (
+        <SeriesGrid series={series} loading={isLoading} />
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

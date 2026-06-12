@@ -70,6 +70,14 @@ export const seriesApi = {
   volumes: (id: number) => api.get(`/library/series/${id}/volumes/`),
   updateMetadata: (id: number, data: unknown) =>
     api.patch(`/library/series/${id}/metadata/`, data),
+  uploadCover: (id: number, file: File) => {
+    const fd = new FormData();
+    fd.append("cover", file);
+    return api.post(`/library/series/${id}/cover/`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  fetchMetadata: (id: number) => api.get(`/library/series/${id}/fetch-metadata/`),
   scan: (id: number) => api.post(`/library/series/${id}/scan/`),
   delete: (id: number) => api.delete(`/library/series/${id}/`),
 };
@@ -148,8 +156,8 @@ export const scannerApi = {
 
 // ─── Metadata ────────────────────────────────────────────────────────────────
 export const metaApi = {
-  genres: () => api.get("/library/genres/"),
-  tags: () => api.get("/library/tags/"),
+  genres: () => api.get("/library/genres/", { params: { page_size: 500 } }),
+  tags: () => api.get("/library/tags/", { params: { page_size: 500 } }),
 };
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
@@ -157,4 +165,8 @@ export const statsApi = {
   me: () => api.get("/stats/me/"),
   history: () => api.get("/stats/history/"),
   series: (id: number) => api.get(`/stats/series/${id}/`),
+  goals: () => api.get("/stats/goals/"),
+  createGoal: (data: { period: string; metric: string; target: number }) =>
+    api.post("/stats/goals/", data),
+  deleteGoal: (id: number) => api.delete(`/stats/goals/${id}/`),
 };

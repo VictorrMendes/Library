@@ -1,6 +1,13 @@
 from rest_framework import serializers
-from .models import Collection, ReadingList, ReadingListItem, WantToRead, SmartFilter
-from apps.library.serializers import SeriesListSerializer, ChapterSerializer
+from apps.library.models import Series
+from apps.library.serializers import SeriesListSerializer
+from .models import (
+    Collection,
+    ReadingList,
+    ReadingListItem,
+    WantToRead,
+    SmartFilter,
+)
 
 
 class CollectionSerializer(serializers.ModelSerializer):
@@ -26,14 +33,19 @@ class CollectionDetailSerializer(CollectionSerializer):
 
 
 class ReadingListItemSerializer(serializers.ModelSerializer):
-    chapter_title = serializers.CharField(source="chapter.title_name", read_only=True)
+    chapter_title = serializers.CharField(
+        source="chapter.title_name", read_only=True
+    )
     series_id = serializers.SerializerMethodField()
     series_name = serializers.SerializerMethodField()
     cover_image = serializers.SerializerMethodField()
 
     class Meta:
         model = ReadingListItem
-        fields = ["id", "chapter_id", "chapter_title", "series_id", "series_name", "cover_image", "order"]
+        fields = [
+            "id", "chapter_id", "chapter_title",
+            "series_id", "series_name", "cover_image", "order",
+        ]
 
     def get_series_id(self, obj):
         return obj.chapter.volume.series_id
@@ -42,7 +54,8 @@ class ReadingListItemSerializer(serializers.ModelSerializer):
         return obj.chapter.volume.series.name
 
     def get_cover_image(self, obj):
-        return obj.chapter.volume.series.cover_image.url if obj.chapter.volume.series.cover_image else None
+        s = obj.chapter.volume.series
+        return s.cover_image.url if s.cover_image else None
 
 
 class ReadingListSerializer(serializers.ModelSerializer):
@@ -62,15 +75,30 @@ class ReadingListSerializer(serializers.ModelSerializer):
 
 class WantToReadSerializer(serializers.ModelSerializer):
     series = SeriesListSerializer(read_only=True)
+    series_id = serializers.PrimaryKeyRelatedField(
+        queryset=Series.objects.all(), source="series"
+    )
 
     class Meta:
         model = WantToRead
         fields = ["id", "series_id", "series", "added_at"]
-        read_only_fields = ["id", "added_at", "series"]
+        read_only_fields = ["id", "added_at"]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        if request and WantToRead.objects.filter(
+            user=request.user, series=attrs["series"]
+        ).exists():
+            raise serializers.ValidationError(
+                {"series_id": "Série já está na lista."}
+            )
+        return attrs
 
 
 class SmartFilterSerializer(serializers.ModelSerializer):
     class Meta:
         model = SmartFilter
-        fields = ["id", "name", "criteria", "sort_by", "sort_asc", "created_at"]
+        fields = [
+            "id", "name", "criteria", "sort_by", "sort_asc", "created_at",
+        ]
         read_only_fields = ["id", "created_at"]

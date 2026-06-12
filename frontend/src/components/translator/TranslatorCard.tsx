@@ -16,6 +16,19 @@ export function TranslatorCard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Capture text selection and pre-fill translator
+  useEffect(() => {
+    const onMouseUp = () => {
+      const sel = window.getSelection()?.toString().trim();
+      if (sel && sel.length > 0 && sel.length < 200) {
+        setWord(sel);
+        if (!isOpen) setOpen(true);
+      }
+    };
+    document.addEventListener("mouseup", onMouseUp);
+    return () => document.removeEventListener("mouseup", onMouseUp);
+  }, [isOpen, setOpen]);
+
   const dragging = useRef(false);
   const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0 });
 

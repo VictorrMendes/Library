@@ -54,6 +54,15 @@ export function SeriesCard({ series, showStatus = false }: Props) {
             </span>
           </div>
         )}
+
+        {series.user_progress_pct > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
+            <div
+              className="h-full bg-primary transition-all duration-300"
+              style={{ width: `${series.user_progress_pct}%` }}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mt-2 space-y-0.5">

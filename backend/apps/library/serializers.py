@@ -74,6 +74,7 @@ class SeriesMetadataSerializer(serializers.ModelSerializer):
 
 class SeriesListSerializer(serializers.ModelSerializer):
     metadata = SeriesMetadataSerializer(read_only=True)
+    user_progress_pct = serializers.SerializerMethodField()
 
     class Meta:
         model = Series
@@ -81,7 +82,14 @@ class SeriesListSerializer(serializers.ModelSerializer):
             "id", "name", "sort_name", "localized_name", "original_name",
             "cover_image", "pages", "library_id", "metadata",
             "avg_hours_to_read", "created_at", "last_modified",
+            "user_progress_pct",
         ]
+
+    def get_user_progress_pct(self, obj):
+        pages_read = getattr(obj, "user_pages_read", 0) or 0
+        if obj.pages > 0:
+            return min(100, int(pages_read / obj.pages * 100))
+        return 0
 
 
 class MangaFileSerializer(serializers.ModelSerializer):

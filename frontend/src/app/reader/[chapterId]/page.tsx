@@ -3,14 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, X, Maximize2, Minimize2, Globe } from "lucide-react";
+import {
+  ChevronLeft, ChevronRight, X, Maximize2, Minimize2, Globe, Settings,
+} from "lucide-react";
 import dynamic from "next/dynamic";
-import { readerApi } from "@/lib/api";
+import { readerApi, authApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useTranslatorStore } from "@/store/translator";
 import { clsx } from "clsx";
 
-// Carregado apenas no cliente — pdfjs não funciona no Node.js 20 via SSR
 const PdfViewer = dynamic(() => import("./PdfViewer"), {
   ssr: false,
   loading: () => (
@@ -30,7 +31,7 @@ interface ChapterData {
 
 export default function ReaderPage() {
   const { chapterId } = useParams<{ chapterId: string }>();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const { toggle: toggleTranslator, isOpen: translatorOpen } = useTranslatorStore();
 
   const [currentPage, setCurrentPage] = useState(0);
@@ -38,7 +39,15 @@ export default function ReaderPage() {
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pdfNumPages, setPdfNumPages] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  // Reader settings (mirror user prefs, saved on change)
+  const [fontSize, setFontSize] = useState(user?.book_font_size ?? 16);
+  const [lineSpacing, setLineSpacing] = useState(user?.book_line_spacing ?? 1.6);
+  const [brightness, setBrightness] = useState(100);
+
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   const { data: chapterData } = useQuery<ChapterData>({
     queryKey: ["reader", "chapter", chapterId],
@@ -52,6 +61,12 @@ export default function ReaderPage() {
         chapter_id: Number(chapterId),
         pages_read: page + 1,
       }),
+  });
+
+  const { mutate: savePreferences } = useMutation({
+    mutationFn: (prefs: Record<string, unknown>) =>
+      authApi.updatePreferences(prefs),
+    onSuccess: (res) => setUser(res.data),
   });
 
   const format = chapterData?.format ?? "images";
@@ -70,13 +85,38 @@ export default function ReaderPage() {
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (showSettings) return;
       if (e.key === "ArrowRight" || e.key === "d") goTo(currentPage + 1);
       if (e.key === "ArrowLeft" || e.key === "a") goTo(currentPage - 1);
       if (e.key === "Escape") history.back();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [currentPage, goTo]);
+  }, [currentPage, goTo, showSettings]);
+
+  // Touch swipe navigation
+  useEffect(() => {
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartX.current = e.touches[0].clientX;
+      touchStartY.current = e.touches[0].clientY;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (touchStartX.current === null || touchStartY.current === null) return;
+      const dx = e.changedTouches[0].clientX - touchStartX.current;
+      const dy = e.changedTouches[0].clientY - touchStartY.current;
+      if (Math.abs(dx) < 40 || Math.abs(dy) > Math.abs(dx)) return;
+      if (dx < 0) goTo(currentPage + (mode === "double" ? 2 : 1));
+      else goTo(currentPage - (mode === "double" ? 2 : 1));
+      touchStartX.current = null;
+      touchStartY.current = null;
+    };
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [currentPage, goTo, mode]);
 
   const showControlsTemporarily = () => {
     setShowControls(true);
@@ -93,6 +133,22 @@ export default function ReaderPage() {
       setIsFullscreen(false);
     }
   };
+
+  // Preload next pages
+  useEffect(() => {
+    if (format !== "images" || !chapterData?.pages) return;
+    const preloadCount = mode === "double" ? 4 : 2;
+    for (let i = 1; i <= preloadCount; i++) {
+      const nextPage = currentPage + i;
+      if (nextPage < totalPages) {
+        const url =
+          chapterData.pages?.[nextPage] ??
+          readerApi.imageUrl(Number(chapterId), nextPage);
+        const img = new Image();
+        img.src = url;
+      }
+    }
+  }, [currentPage, format, chapterData, totalPages, chapterId, mode]);
 
   if (!chapterData) {
     return (
@@ -112,6 +168,7 @@ export default function ReaderPage() {
   return (
     <div
       className="min-h-screen bg-black relative select-none"
+      style={{ filter: brightness !== 100 ? `brightness(${brightness}%)` : undefined }}
       onMouseMove={showControlsTemporarily}
       onClick={showControlsTemporarily}
     >
@@ -141,6 +198,16 @@ export default function ReaderPage() {
             )}
           >
             <Globe className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => setShowSettings((v) => !v)}
+            title="Configurações"
+            className={clsx(
+              "p-2 transition-colors",
+              showSettings ? "text-primary" : "text-white/70 hover:text-white"
+            )}
+          >
+            <Settings className="h-5 w-5" />
           </button>
           <button
             onClick={toggleFullscreen}
@@ -173,12 +240,52 @@ export default function ReaderPage() {
         </div>
       </div>
 
+      {/* ── Settings panel ──────────────────────────────────────── */}
+      {showSettings && (
+        <div className="fixed top-14 right-4 z-50 w-72 bg-black/90 border border-white/10 rounded-xl p-4 space-y-4 backdrop-blur-sm">
+          <p className="text-sm font-semibold text-white">Configurações de leitura</p>
+
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-white/60">
+              <span>Brilho</span><span>{brightness}%</span>
+            </div>
+            <input type="range" min={30} max={150} value={brightness}
+              onChange={(e) => setBrightness(Number(e.target.value))}
+              className="w-full accent-primary" />
+          </div>
+
+          {format === "epub" && (
+            <>
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-white/60">
+                  <span>Tamanho da fonte</span><span>{fontSize}px</span>
+                </div>
+                <input type="range" min={12} max={28} value={fontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  onMouseUp={() => savePreferences({ book_font_size: fontSize })}
+                  className="w-full accent-primary" />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-white/60">
+                  <span>Espaçamento entre linhas</span><span>{lineSpacing.toFixed(1)}</span>
+                </div>
+                <input type="range" min={1.2} max={2.5} step={0.1} value={lineSpacing}
+                  onChange={(e) => setLineSpacing(Number(e.target.value))}
+                  onMouseUp={() => savePreferences({ book_line_spacing: lineSpacing })}
+                  className="w-full accent-primary" />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── EPUB Viewer (iframe) ─────────────────────────────────── */}
       {format === "epub" && chapterData.book_page_base_url && (
         <>
           <iframe
             key={`epub-${currentPage}`}
-            src={`${chapterData.book_page_base_url}?page=${currentPage}`}
+            src={`${chapterData.book_page_base_url}?page=${currentPage}&font_size=${fontSize}&line_spacing=${lineSpacing}`}
             className="w-full border-0"
             style={{ height: "100vh", paddingTop: "48px" }}
             title={`Página ${currentPage + 1}`}

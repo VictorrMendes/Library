@@ -519,7 +519,11 @@ def scan_series(series_id):
 
 def _series_name_from_filename(filename: str) -> str:
     """Extrai nome da série a partir de padrões comuns de nomenclatura."""
-    name = Path(filename).stem
+    p = Path(filename)
+    name = p.stem
+    # dotfiles without a real extension (e.g. ".cbz") have no series name
+    if not p.suffix and name.startswith("."):
+        return "Unknown Series"
     patterns = [
         r"\s*[-–]\s*[vV]ol?\.?\s*\d+.*",
         r"\s*[-–]\s*[cC]h(apter)?\.?\s*[\d.]+.*",

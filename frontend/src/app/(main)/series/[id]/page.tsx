@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  BookOpen, Clock, ChevronRight, Play, Heart, Star, Tag, Trash2, Loader2,
+  BookOpen, Clock, ChevronRight, Play, Heart, Tag, Trash2, Loader2, Camera,
 } from "lucide-react";
 import { seriesApi, readerApi, collectionsApi } from "@/lib/api";
+import { SeriesDetailSkeleton } from "@/components/ui/Skeleton";
+import { SeriesCard } from "@/components/series/SeriesCard";
 import type { Series, Volume } from "@/types";
 import { clsx } from "clsx";
 
@@ -23,6 +25,8 @@ const STATUS_LABELS: Record<string, string> = {
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const { data: series, isLoading } = useQuery<Series>({
@@ -42,23 +46,79 @@ export default function SeriesDetailPage() {
     enabled: !!series,
   });
 
+  const [editMeta, setEditMeta] = useState(false);
+  const [metaForm, setMetaForm] = useState({
+    summary: "", publication_status: "", release_year: "", language: "",
+  });
+
+  function openEditMeta() {
+    setMetaForm({
+      summary: series?.metadata?.summary ?? "",
+      publication_status: series?.metadata?.publication_status ?? "",
+      release_year: String(series?.metadata?.release_year ?? ""),
+      language: series?.metadata?.language ?? "",
+    });
+    setEditMeta(true);
+  }
+
+  const updateMetaMutation = useMutation({
+    mutationFn: () =>
+      seriesApi.updateMetadata(Number(id), {
+        summary: metaForm.summary,
+        publication_status: metaForm.publication_status || undefined,
+        release_year: metaForm.release_year ? Number(metaForm.release_year) : null,
+        language: metaForm.language,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["series", id] });
+      setEditMeta(false);
+    },
+  });
+
+  const fetchMetaMutation = useMutation({
+    mutationFn: () => seriesApi.fetchMetadata(Number(id)),
+    onSuccess: (res) => {
+      const d = res.data;
+      setMetaForm((f) => ({
+        ...f,
+        summary: d.summary || f.summary,
+        release_year: d.release_year ? String(d.release_year) : f.release_year,
+        language: d.language || f.language,
+      }));
+    },
+  });
+
+  const firstGenre = series?.metadata?.genres?.[0]?.name;
+  const { data: similar } = useQuery<Series[]>({
+    queryKey: ["series", "similar", id, firstGenre],
+    queryFn: () =>
+      seriesApi
+        .list({ genre: firstGenre, page_size: 7 })
+        .then((r) => (r.data.results as Series[]).filter((s) => s.id !== Number(id)).slice(0, 6)),
+    enabled: !!firstGenre,
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => seriesApi.delete(Number(id)),
     onSuccess: () => router.push("/dashboard"),
   });
+
+  const coverMutation = useMutation({
+    mutationFn: (file: File) => seriesApi.uploadCover(Number(id), file),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["series", id] }),
+  });
+
+  function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) coverMutation.mutate(file);
+  }
 
   const handleContinue = async () => {
     const { data } = await readerApi.continuePoint(Number(id));
     router.push(`/reader/${data.chapter_id}`);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-      </div>
-    );
-  }
+  if (isLoading) return <SeriesDetailSkeleton />;
 
   if (!series) return null;
 
@@ -86,20 +146,39 @@ export default function SeriesDetailPage() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-24 sm:-mt-40 relative z-10 pb-12">
         <div className="flex gap-4 sm:gap-6">
           {/* Cover */}
-          <div className="shrink-0 w-28 h-40 sm:w-36 sm:h-52 rounded-xl overflow-hidden border border-border shadow-xl shadow-black/40">
-            {series.cover_image ? (
-              <Image
-                src={series.cover_image}
-                alt={series.name}
-                width={144}
-                height={208}
-                className="object-cover w-full h-full"
-              />
-            ) : (
-              <div className="w-full h-full bg-muted flex items-center justify-center">
-                <BookOpen className="h-10 w-10 text-muted-foreground" />
-              </div>
-            )}
+          <div className="shrink-0 w-28 h-40 sm:w-36 sm:h-52 relative group">
+            <div className="rounded-xl overflow-hidden border border-border shadow-xl shadow-black/40 w-full h-full">
+              {series.cover_image ? (
+                <Image
+                  src={series.cover_image}
+                  alt={series.name}
+                  width={144}
+                  height={208}
+                  className="object-cover w-full h-full"
+                />
+              ) : (
+                <div className="w-full h-full bg-muted flex items-center justify-center">
+                  <BookOpen className="h-10 w-10 text-muted-foreground" />
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => coverInputRef.current?.click()}
+              disabled={coverMutation.isPending}
+              title="Alterar capa"
+              className="absolute inset-0 rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+            >
+              {coverMutation.isPending
+                ? <Loader2 className="h-6 w-6 text-white animate-spin" />
+                : <Camera className="h-6 w-6 text-white" />}
+            </button>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleCoverChange}
+            />
           </div>
 
           {/* Info */}
@@ -146,6 +225,12 @@ export default function SeriesDetailPage() {
               >
                 <Heart className="h-4 w-4" />
                 Quero Ler
+              </button>
+              <button
+                onClick={openEditMeta}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-sm font-medium hover:bg-accent transition-colors"
+              >
+                Editar
               </button>
               <button
                 onClick={() => setDeleteConfirm(true)}
@@ -199,6 +284,18 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
+        {/* Similar series */}
+        {similar && similar.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-base font-semibold mb-4">Séries similares</h2>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+              {similar.map((s) => (
+                <SeriesCard key={s.id} series={s} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Volumes + Chapters */}
         {volumes && volumes.length > 0 && (
           <div className="mt-10">
@@ -211,6 +308,91 @@ export default function SeriesDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Edit metadata modal */}
+      {editMeta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setEditMeta(false)} />
+          <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-md space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold">Editar metadados</h2>
+              <button
+                onClick={() => fetchMetaMutation.mutate()}
+                disabled={fetchMetaMutation.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors disabled:opacity-60"
+              >
+                {fetchMetaMutation.isPending
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : null}
+                Buscar online
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground font-medium mb-1 block">Sinopse</label>
+                <textarea
+                  value={metaForm.summary}
+                  onChange={(e) => setMetaForm((f) => ({ ...f, summary: e.target.value }))}
+                  rows={4}
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium mb-1 block">Status</label>
+                  <select
+                    value={metaForm.publication_status}
+                    onChange={(e) => setMetaForm((f) => ({ ...f, publication_status: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">—</option>
+                    {["ongoing","completed","hiatus","cancelled","ended"].map((s) => (
+                      <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium mb-1 block">Ano</label>
+                  <input
+                    type="number"
+                    value={metaForm.release_year}
+                    onChange={(e) => setMetaForm((f) => ({ ...f, release_year: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground font-medium mb-1 block">Idioma</label>
+                <input
+                  value={metaForm.language}
+                  onChange={(e) => setMetaForm((f) => ({ ...f, language: e.target.value }))}
+                  placeholder="pt, en, ja…"
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+            {updateMetaMutation.isError && (
+              <p className="text-sm text-red-400">Erro ao salvar. Tente novamente.</p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setEditMeta(false)}
+                className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => updateMetaMutation.mutate()}
+                disabled={updateMetaMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+              >
+                {updateMetaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (

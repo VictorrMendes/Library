@@ -2,10 +2,14 @@ import secrets
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import generics, status, permissions
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework_simplejwt.views import TokenObtainPairView
-from .serializers import UserSerializer, RegisterSerializer, ChangePasswordSerializer, UpdatePreferencesSerializer
+from .serializers import (
+    UserSerializer,
+    RegisterSerializer,
+    ChangePasswordSerializer,
+    UpdatePreferencesSerializer,
+)
 from .models import ApiKey
 
 User = get_user_model()
@@ -16,7 +20,6 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
     def perform_create(self, serializer):
-        # First user becomes admin
         is_first = not User.objects.exists()
         user = serializer.save()
         if is_first:
@@ -39,7 +42,9 @@ class ChangePasswordView(generics.GenericAPIView):
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        request.user.set_password(serializer.validated_data["new_password"])
+        request.user.set_password(
+            serializer.validated_data["new_password"]
+        )
         request.user.save(update_fields=["password"])
         return Response({"detail": "Senha alterada com sucesso."})
 
@@ -57,6 +62,7 @@ class UpdatePreferencesView(generics.UpdateAPIView):
 class UserListView(generics.ListAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         if not self.request.user.is_admin:
@@ -88,7 +94,10 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
 def api_keys(request):
     if request.method == "GET":
         keys = ApiKey.objects.filter(user=request.user, is_active=True)
-        data = [{"id": k.id, "label": k.label, "created_at": k.created_at} for k in keys]
+        data = [
+            {"id": k.id, "label": k.label, "created_at": k.created_at}
+            for k in keys
+        ]
         return Response(data)
 
     label = request.data.get("label", "OPDS")
@@ -97,10 +106,15 @@ def api_keys(request):
         key=secrets.token_urlsafe(32),
         label=label,
     )
-    return Response({"id": key.id, "key": key.key, "label": key.label}, status=201)
+    return Response(
+        {"id": key.id, "key": key.key, "label": key.label},
+        status=201,
+    )
 
 
 @api_view(["DELETE"])
 def revoke_api_key(request, pk):
-    ApiKey.objects.filter(user=request.user, pk=pk).update(is_active=False)
+    ApiKey.objects.filter(user=request.user, pk=pk).update(
+        is_active=False
+    )
     return Response(status=status.HTTP_204_NO_CONTENT)
