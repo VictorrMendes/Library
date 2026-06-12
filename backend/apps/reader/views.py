@@ -1,4 +1,3 @@
-import hashlib
 import os
 import re
 import mimetypes
@@ -23,62 +22,62 @@ from .serializers import (
 )
 
 
-# ─── EPUB extraction cache ───────────────────────────────────────────────────
-# EPUBs are extracted to /tmp/epub_cache/<hash>/ on first access.
-# Subsequent page/resource requests read directly from the filesystem —
-# no re-parsing with ebooklib.
+# ─── EPUB in-memory cache ────────────────────────────────────────────────────
+# ebooklib opens and reads the entire EPUB correctly regardless of internal
+# directory structure. We call it once per file and cache everything in
+# memory so subsequent page/resource requests are instant.
 
-EPUB_CACHE_DIR = "/tmp/epub_cache"
 _epub_lock = threading.Lock()
-_epub_extractions: dict = {}  # {file_path: (mtime, extract_dir, spine_names)}
+_epub_cache: dict = {}  # {file_path: (mtime, spine_data, resource_map)}
 
 
-def _ensure_epub_extracted(file_path):
-    """Extract EPUB to a temp dir once; return (extract_dir, spine_file_names).
+def _load_epub(file_path):
+    """Load EPUB once per process; return (spine_data, resource_map).
 
-    ebooklib is called only on the first access per file (per process).
-    Race-safe: concurrent workers may both extract, which is harmless since
-    they write identical content to the same path.
+    spine_data  — list of {'name': str, 'content': bytes} in reading order
+    resource_map — dict {file_name: bytes} for all items (images, CSS, fonts)
     """
     try:
-        current_mtime = os.path.getmtime(file_path)
+        mtime = os.path.getmtime(file_path)
     except OSError:
         raise Http404
 
     with _epub_lock:
-        cached = _epub_extractions.get(file_path)
-        if cached and cached[0] == current_mtime:
+        cached = _epub_cache.get(file_path)
+        if cached and cached[0] == mtime:
             return cached[1], cached[2]
-
-    path_hash = hashlib.md5(file_path.encode()).hexdigest()
-    extract_dir = os.path.join(EPUB_CACHE_DIR, path_hash)
-
-    try:
-        os.makedirs(extract_dir, exist_ok=True)
-        with zipfile.ZipFile(file_path) as zf:
-            zf.extractall(extract_dir)
-    except Exception:
-        raise Http404
 
     try:
         book = epub_lib.read_epub(file_path)
-        spine_names = []
-        for item_id, _ in book.spine:
-            item = book.get_item_with_id(item_id)
-            if item is None:
-                continue
-            t = item.get_type()
-            name = item.file_name
-            ext = name.rsplit(".", 1)[-1].lower()
-            if t == ebooklib.ITEM_DOCUMENT or ext in ("html", "xhtml", "htm"):
-                spine_names.append(name)
     except Exception:
         raise Http404
 
-    with _epub_lock:
-        _epub_extractions[file_path] = (current_mtime, extract_dir, spine_names)
+    spine_data = []
+    for item_id, _ in book.spine:
+        item = book.get_item_with_id(item_id)
+        if item is None:
+            continue
+        t = item.get_type()
+        name = item.file_name
+        ext = name.rsplit(".", 1)[-1].lower()
+        if t == ebooklib.ITEM_DOCUMENT or ext in ("html", "xhtml", "htm"):
+            try:
+                content = item.get_content()
+            except Exception:
+                content = b""
+            spine_data.append({"name": name, "content": content})
 
-    return extract_dir, spine_names
+    resource_map: dict = {}
+    for item in book.get_items():
+        try:
+            resource_map[item.file_name] = item.get_content()
+        except Exception:
+            resource_map[item.file_name] = b""
+
+    with _epub_lock:
+        _epub_cache[file_path] = (mtime, spine_data, resource_map)
+
+    return spine_data, resource_map
 
 
 def _resolve_epub_path(doc_path, rel_url):
@@ -111,8 +110,8 @@ def chapter_images(request, chapter_id):
         total_pages = 0
         if os.path.exists(manga_file.file_path):
             try:
-                _, spine_names = _ensure_epub_extracted(manga_file.file_path)
-                total_pages = len(spine_names)
+                spine_data, _ = _load_epub(manga_file.file_path)
+                total_pages = len(spine_data)
             except Exception:
                 total_pages = 0
         return Response({
@@ -248,18 +247,14 @@ def chapter_book_page(request, chapter_id):
     except (ValueError, TypeError):
         page_num = 0
 
-    extract_dir, spine_names = _ensure_epub_extracted(manga_file.file_path)
+    spine_data, _ = _load_epub(manga_file.file_path)
 
-    if page_num < 0 or page_num >= len(spine_names):
+    if page_num < 0 or page_num >= len(spine_data):
         raise Http404
 
-    doc_path = spine_names[page_num]
-    full_path = os.path.join(extract_dir, doc_path)
-    try:
-        with open(full_path, "r", encoding="utf-8", errors="replace") as fh:
-            content = fh.read()
-    except OSError:
-        raise Http404
+    page = spine_data[page_num]
+    doc_path = page["name"]
+    content = page["content"].decode("utf-8", errors="replace")
 
     resource_base = f"/api/reader/chapter/{chapter_id}/book-resource/"
 
@@ -298,20 +293,17 @@ def chapter_book_resource(request, chapter_id):
     if manga_file.format != "epub":
         raise Http404
 
-    if ".." in file_key:
-        raise Http404
+    _, resource_map = _load_epub(manga_file.file_path)
 
-    extract_dir, _ = _ensure_epub_extracted(manga_file.file_path)
-
-    resource_path = os.path.join(extract_dir, file_key)
-    if not os.path.isfile(resource_path):
+    data = resource_map.get(file_key)
+    if data is None:
         raise Http404
 
     content_type, _ = mimetypes.guess_type(file_key)
     if not content_type:
         content_type = "application/octet-stream"
 
-    return FileResponse(open(resource_path, "rb"), content_type=content_type)
+    return HttpResponse(data, content_type=content_type)
 
 
 @api_view(["GET"])
