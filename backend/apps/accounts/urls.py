@@ -13,4 +13,6 @@ urlpatterns = [
     path("users/<int:pk>/", views.UserDetailView.as_view(), name="user-detail"),
     path("api-keys/", views.api_keys, name="api-keys"),
     path("api-keys/<int:pk>/", views.revoke_api_key, name="revoke-api-key"),
+    path("scrobble-credentials/", views.scrobble_credentials, name="scrobble-credentials"),
+    path("scrobble-credentials/<str:provider>/", views.revoke_scrobble_credential, name="revoke-scrobble-credential"),
 ]

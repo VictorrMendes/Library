@@ -1,11 +1,20 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Clock, BookOpen, TrendingUp, Library, Flame } from "lucide-react";
-import { seriesApi, statsApi } from "@/lib/api";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Clock, BookOpen, TrendingUp, Library, Flame, Settings2, Check } from "lucide-react";
+import { seriesApi, statsApi, authApi } from "@/lib/api";
 import { SeriesCard } from "@/components/series/SeriesCard";
 import { SeriesCardSkeleton } from "@/components/ui/Skeleton";
+import { useAuthStore } from "@/store/auth";
 import type { Series, UserStats } from "@/types";
+import { clsx } from "clsx";
+
+const ALL_SECTIONS = [
+  { key: "in_progress", label: "Continuar Lendo" },
+  { key: "recently_completed", label: "Recém Completados" },
+  { key: "recently_added", label: "Adicionados Recentemente" },
+] as const;
 
 function computeStreak(history: Array<{ read_at: string }>): number {
   if (!history.length) return 0;
@@ -22,6 +31,40 @@ function computeStreak(history: Array<{ read_at: string }>): number {
 }
 
 export default function DashboardPage() {
+  const { user, setUser } = useAuthStore();
+  const [showCustomize, setShowCustomize] = useState(false);
+  const customizeRef = useRef<HTMLDivElement>(null);
+
+  const activeSections: string[] =
+    user?.dashboard_sections?.length ? user.dashboard_sections : ALL_SECTIONS.map((s) => s.key);
+
+  const { mutate: savePrefs } = useMutation({
+    mutationFn: (sections: string[]) =>
+      authApi.updatePreferences({ dashboard_sections: sections } as Record<string, unknown>),
+    onSuccess: async () => {
+      const { data: fresh } = await authApi.me();
+      setUser(fresh);
+    },
+  });
+
+  function toggleSection(key: string) {
+    const next = activeSections.includes(key)
+      ? activeSections.filter((s) => s !== key)
+      : [...activeSections, key];
+    savePrefs(next);
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (customizeRef.current && !customizeRef.current.contains(e.target as Node)) {
+        setShowCustomize(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const { data: recentSeries, isLoading: recentLoading } = useQuery({
     queryKey: ["series", "recent"],
     queryFn: () =>
@@ -63,9 +106,46 @@ export default function DashboardPage() {
     <div className="p-5 sm:p-8 space-y-10 max-w-screen-2xl">
 
       {/* Page heading */}
-      <div>
-        <h1 className="font-classic text-3xl font-medium tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Bem-vindo de volta</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-classic text-3xl font-medium tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">Bem-vindo de volta</p>
+        </div>
+        <div className="relative" ref={customizeRef}>
+          <button
+            onClick={() => setShowCustomize((v) => !v)}
+            title="Personalizar seções"
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors",
+              showCustomize
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40"
+            )}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Personalizar
+          </button>
+          {showCustomize && (
+            <div className="absolute right-0 top-9 z-50 w-52 bg-card border border-border rounded-xl p-2 shadow-xl space-y-0.5">
+              {ALL_SECTIONS.map(({ key, label }) => {
+                const active = activeSections.includes(key);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggleSection(key)}
+                    className={clsx(
+                      "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+                      active ? "text-foreground bg-accent/50" : "text-muted-foreground hover:bg-accent/30"
+                    )}
+                  >
+                    <span>{label}</span>
+                    {active && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Streak banner */}
@@ -108,16 +188,19 @@ export default function DashboardPage() {
       )}
 
       {/* Continuar lendo */}
-      <Section title="Continuar Lendo">
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
-          {progressLoading
-            ? [1, 2, 3, 4, 5, 6].map((i) => <SeriesCardSkeleton key={i} />)
-            : inProgress?.map((s) => <SeriesCard key={s.id} series={s} />)}
-        </div>
-      </Section>
+      {activeSections.includes("in_progress") && (
+        <Section title="Continuar Lendo">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
+            {progressLoading
+              ? [1, 2, 3, 4, 5, 6].map((i) => <SeriesCardSkeleton key={i} />)
+              : inProgress?.map((s) => <SeriesCard key={s.id} series={s} />)}
+          </div>
+        </Section>
+      )}
 
       {/* Recém completados */}
-      {(completedLoading || (recentlyCompleted && recentlyCompleted.length > 0)) && (
+      {activeSections.includes("recently_completed") &&
+        (completedLoading || (recentlyCompleted && recentlyCompleted.length > 0)) && (
         <Section title="Recém Completados">
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
             {completedLoading
@@ -128,13 +211,15 @@ export default function DashboardPage() {
       )}
 
       {/* Adicionados recentemente */}
-      <Section title="Adicionados Recentemente">
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
-          {recentLoading
-            ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => <SeriesCardSkeleton key={i} />)
-            : recentSeries?.map((s) => <SeriesCard key={s.id} series={s} />)}
-        </div>
-      </Section>
+      {activeSections.includes("recently_added") && (
+        <Section title="Adicionados Recentemente">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
+            {recentLoading
+              ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => <SeriesCardSkeleton key={i} />)
+              : recentSeries?.map((s) => <SeriesCard key={s.id} series={s} />)}
+          </div>
+        </Section>
+      )}
     </div>
   );
 }

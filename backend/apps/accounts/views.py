@@ -9,8 +9,9 @@ from .serializers import (
     RegisterSerializer,
     ChangePasswordSerializer,
     UpdatePreferencesSerializer,
+    ScrobbleCredentialSerializer,
 )
-from .models import ApiKey
+from .models import ApiKey, ScrobbleCredential
 
 User = get_user_model()
 
@@ -117,4 +118,33 @@ def revoke_api_key(request, pk):
     ApiKey.objects.filter(user=request.user, pk=pk).update(
         is_active=False
     )
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ─── Scrobble Credentials ──────────────────────────────────────────────────────
+
+@api_view(["GET", "POST"])
+def scrobble_credentials(request):
+    if request.method == "GET":
+        creds = ScrobbleCredential.objects.filter(user=request.user, is_active=True)
+        data = [{"id": c.id, "provider": c.provider, "created_at": c.created_at} for c in creds]
+        return Response(data)
+
+    serializer = ScrobbleCredentialSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    provider = serializer.validated_data["provider"]
+    ScrobbleCredential.objects.update_or_create(
+        user=request.user,
+        provider=provider,
+        defaults={
+            "access_token": serializer.validated_data["access_token"],
+            "is_active": True,
+        },
+    )
+    return Response({"detail": "Credencial salva."}, status=201)
+
+
+@api_view(["DELETE"])
+def revoke_scrobble_credential(request, provider):
+    ScrobbleCredential.objects.filter(user=request.user, provider=provider).update(is_active=False)
     return Response(status=status.HTTP_204_NO_CONTENT)

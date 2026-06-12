@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { List, Plus, Trash2, Pencil, Loader2, X, Hash } from "lucide-react";
+import { List, Plus, Trash2, Pencil, Loader2, X, Hash, Download, Upload } from "lucide-react";
+import { useRef } from "react";
 import { useForm } from "react-hook-form";
 import { collectionsApi } from "@/lib/api";
 import type { ReadingList } from "@/types";
@@ -19,6 +20,9 @@ export default function ReadingListsPage() {
     editing: null,
   });
   const [deleteTarget, setDeleteTarget] = useState<ReadingList | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importTarget, setImportTarget] = useState<number | null>(null);
+  const [importResult, setImportResult] = useState<{ added: number; skipped: number } | null>(null);
 
   const { data: lists = [], isLoading } = useQuery<ReadingList[]>({
     queryKey: ["reading-lists"],
@@ -55,6 +59,29 @@ export default function ReadingListsPage() {
 
   function closeModal() {
     setModal({ open: false, editing: null });
+  }
+
+  function exportCbl(id: number, title: string) {
+    collectionsApi.exportCbl(id).then((res) => {
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title.replace(/[^\w\s-]/g, "_")}.cbl`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  async function handleImport(file: File) {
+    if (importTarget == null) return;
+    try {
+      const { data } = await collectionsApi.importCbl(importTarget, file);
+      setImportResult(data as { added: number; skipped: number });
+      qc.invalidateQueries({ queryKey: ["reading-lists"] });
+    } catch {
+      setImportResult(null);
+    }
+    setImportTarget(null);
   }
 
   async function onSubmit(form: ListForm) {
@@ -117,7 +144,21 @@ export default function ReadingListsPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => exportCbl(list.id, list.title)}
+                  title="Exportar CBL"
+                  className="p-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => { setImportTarget(list.id); importInputRef.current?.click(); }}
+                  title="Importar CBL"
+                  className="p-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  <Upload className="h-4 w-4" />
+                </button>
                 <button
                   onClick={() => openEdit(list)}
                   className="p-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
@@ -133,6 +174,34 @@ export default function ReadingListsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Hidden CBL import input */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".cbl,.xml"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleImport(file);
+          e.target.value = "";
+        }}
+      />
+
+      {/* Import result toast */}
+      {importResult && (
+        <div className="fixed bottom-6 right-6 z-50 bg-card border border-border rounded-xl p-4 shadow-xl flex items-center gap-3">
+          <div>
+            <p className="text-sm font-medium">Importação concluída</p>
+            <p className="text-xs text-muted-foreground">
+              {importResult.added} adicionados · {importResult.skipped} ignorados
+            </p>
+          </div>
+          <button onClick={() => setImportResult(null)} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 

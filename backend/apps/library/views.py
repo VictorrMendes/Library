@@ -6,12 +6,13 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django_filters import rest_framework as df
 from django.db.models import Subquery, OuterRef, Sum, IntegerField, Value, F
 from django.db.models.functions import Coalesce
-from .models import Library, Series, Volume, Chapter, Genre, Tag, Person
+from .models import Library, Series, SeriesRelation, Volume, Chapter, Genre, Tag, Person
 from .serializers import (
     LibrarySerializer,
     SeriesListSerializer,
     SeriesDetailSerializer,
     SeriesMetadataSerializer,
+    SeriesRelationSerializer,
     VolumeSerializer,
     ChapterSerializer,
     GenreSerializer,
@@ -94,11 +95,12 @@ class SeriesViewSet(viewsets.ModelViewSet):
             .annotate(total=Sum("pages_read"))
             .values("total")
         )
-        return (
+        qs = (
             Series.objects.filter(library__in=accessible)
             .select_related("metadata")
             .prefetch_related(
-                "metadata__genres", "metadata__tags", "metadata__people"
+                "metadata__genres", "metadata__tags", "metadata__people",
+                "relations__target",
             )
             .annotate(
                 user_pages_read=Coalesce(
@@ -109,6 +111,16 @@ class SeriesViewSet(viewsets.ModelViewSet):
                 )
             )
         )
+        # Age restriction: filter out series above the user's configured limit
+        if user.age_restriction and user.age_restriction > 0:
+            if user.age_restriction_include_unknowns:
+                qs = qs.filter(metadata__age_rating__lte=user.age_restriction)
+            else:
+                qs = qs.filter(
+                    metadata__age_rating__gt=0,
+                    metadata__age_rating__lte=user.age_restriction,
+                )
+        return qs
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -196,6 +208,32 @@ class SeriesViewSet(viewsets.ModelViewSet):
                 pass
 
         return Response(result)
+
+    @action(detail=True, methods=["get", "post"], url_path="relations")
+    def relations(self, request, pk=None):
+        series = self.get_object()
+        if request.method == "GET":
+            rels = series.relations.select_related("target")
+            return Response(SeriesRelationSerializer(rels, many=True, context={"request": request}).data)
+        # POST — create relation
+        serializer = SeriesRelationSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        try:
+            rel = SeriesRelation.objects.create(
+                series=series,
+                target_id=serializer.validated_data["target_id"],
+                relation_type=serializer.validated_data["relation_type"],
+            )
+        except Exception as e:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(str(e))
+        return Response(SeriesRelationSerializer(rel, context={"request": request}).data, status=201)
+
+    @action(detail=True, methods=["delete"], url_path=r"relations/(?P<relation_id>\d+)")
+    def delete_relation(self, request, pk=None, relation_id=None):
+        series = self.get_object()
+        SeriesRelation.objects.filter(series=series, pk=relation_id).delete()
+        return Response(status=204)
 
     @action(
         detail=True, methods=["post"], url_path="cover",

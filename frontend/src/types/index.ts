@@ -14,8 +14,23 @@ export interface User {
   book_font_family: string;
   book_line_spacing: number;
   blur_unread_summaries: boolean;
+  dashboard_sections: string[];
   created_at: string;
   last_active: string | null;
+}
+
+export interface ScrobbleCredential {
+  id: number;
+  provider: "anilist" | "mal";
+  created_at: string;
+}
+
+export interface SeriesRelation {
+  id: number;
+  target_id: number;
+  target_name: string;
+  target_cover: string | null;
+  relation_type: "sequel" | "prequel" | "spin_off" | "adaptation" | "alternative" | "contains" | "side_story";
 }
 
 export interface Library {
@@ -78,6 +93,9 @@ export interface Series {
   metadata: SeriesMetadata | null;
   avg_hours_to_read: number;
   user_progress_pct: number;
+  relations?: SeriesRelation[];
+  anilist_id?: number | null;
+  mal_id?: number | null;
   created_at: string;
   last_modified: string;
 }

@@ -58,6 +58,10 @@ class User(AbstractUser):
     book_font_family = models.CharField(max_length=100, default="serif")
     book_line_spacing = models.FloatField(default=1.5)
     blur_unread_summaries = models.BooleanField(default=False)
+    dashboard_sections = models.JSONField(
+        default=list,
+        help_text="Ordered list of section keys visible on dashboard",
+    )
 
     USERNAME_FIELD = "username"
     REQUIRED_FIELDS = ["email"]
@@ -73,6 +77,28 @@ class User(AbstractUser):
     @property
     def is_admin(self):
         return self.role == UserRole.ADMIN
+
+
+class ScrobbleProvider(models.TextChoices):
+    ANILIST = "anilist", "AniList"
+    MAL = "mal", "MyAnimeList"
+
+
+class ScrobbleCredential(models.Model):
+    user = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="scrobble_credentials"
+    )
+    provider = models.CharField(max_length=20, choices=ScrobbleProvider.choices)
+    access_token = models.TextField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "accounts_scrobble_credential"
+        unique_together = [("user", "provider")]
+
+    def __str__(self):
+        return f"{self.user.username} — {self.provider}"
 
 
 class ApiKey(models.Model):

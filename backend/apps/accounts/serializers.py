@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from .models import ScrobbleCredential
 
 User = get_user_model()
 
@@ -12,9 +13,18 @@ class UserSerializer(serializers.ModelSerializer):
             "primary_color", "age_restriction", "identity_provider",
             "reading_direction", "reading_mode", "scaling", "theme",
             "book_font_size", "book_font_family", "book_line_spacing",
-            "blur_unread_summaries", "created_at", "last_active",
+            "blur_unread_summaries", "dashboard_sections",
+            "created_at", "last_active",
         ]
         read_only_fields = ["id", "created_at", "last_active", "identity_provider"]
+
+
+class ScrobbleCredentialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScrobbleCredential
+        fields = ["id", "provider", "access_token", "is_active", "created_at"]
+        read_only_fields = ["id", "created_at"]
+        extra_kwargs = {"access_token": {"write_only": True}}
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -46,4 +56,5 @@ class UpdatePreferencesSerializer(serializers.ModelSerializer):
             "reading_direction", "reading_mode", "scaling", "theme",
             "book_font_size", "book_font_family", "book_line_spacing",
             "blur_unread_summaries", "primary_color", "age_restriction",
+            "dashboard_sections",
         ]

@@ -487,6 +487,9 @@ def scan_library(self, library_id):
                     chapter.save(update_fields=["pages"])
                     files_added += 1
 
+        # Update series-level page counts and reading time estimates
+        _update_series_stats(library_id)
+
         library.last_scanned = timezone.now()
         library.save(update_fields=["last_scanned"])
 
@@ -501,6 +504,49 @@ def scan_library(self, library_id):
         job.finished_at = timezone.now()
         job.save()
         raise self.retry(exc=exc, countdown=60)
+
+
+def _update_series_stats(library_id):
+    """Recalculate pages, word_count and reading-time estimates for all series in a library."""
+    from django.db.models import Sum
+    from apps.library.models import Library, Series
+
+    # manga/comics: ~200 pages/hour — books/novels: uses word_count at 250 wpm
+    PAGES_PER_HOUR_IMAGES = 200
+    WORDS_PER_MINUTE = 250
+
+    try:
+        library = Library.objects.get(pk=library_id)
+        for series in library.series.prefetch_related("volumes__chapters__files").all():
+            total_pages = 0
+            total_words = 0
+            for volume in series.volumes.all():
+                for chapter in volume.chapters.all():
+                    ch_pages = chapter.files.aggregate(s=Sum("pages"))["s"] or 0
+                    chapter.pages = ch_pages
+                    chapter.save(update_fields=["pages"])
+                    total_pages += ch_pages
+                    total_words += chapter.word_count or 0
+
+            series.pages = total_pages
+            series.word_count = total_words
+
+            if total_words > 0:
+                hours = total_words / (WORDS_PER_MINUTE * 60)
+            elif total_pages > 0:
+                hours = total_pages / PAGES_PER_HOUR_IMAGES
+            else:
+                hours = 0
+
+            series.avg_hours_to_read = round(hours, 2)
+            series.min_hours_to_read = round(hours * 0.8, 2)
+            series.max_hours_to_read = round(hours * 1.2, 2)
+            series.save(update_fields=[
+                "pages", "word_count",
+                "avg_hours_to_read", "min_hours_to_read", "max_hours_to_read",
+            ])
+    except Exception:
+        pass
 
 
 @shared_task

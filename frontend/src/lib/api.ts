@@ -80,6 +80,12 @@ export const seriesApi = {
   fetchMetadata: (id: number) => api.get(`/library/series/${id}/fetch-metadata/`),
   scan: (id: number) => api.post(`/library/series/${id}/scan/`),
   delete: (id: number) => api.delete(`/library/series/${id}/`),
+  // Relations
+  getRelations: (id: number) => api.get(`/library/series/${id}/relations/`),
+  addRelation: (id: number, target_id: number, relation_type: string) =>
+    api.post(`/library/series/${id}/relations/`, { target_id, relation_type }),
+  deleteRelation: (id: number, relationId: number) =>
+    api.delete(`/library/series/${id}/relations/${relationId}/`),
 };
 
 // ─── Reader ──────────────────────────────────────────────────────────────────
@@ -128,6 +134,25 @@ export const collectionsApi = {
     api.delete(`/collections/want-to-read/${id}/`),
   smartFilters: () => api.get("/collections/smart-filters/"),
   createSmartFilter: (data: unknown) => api.post("/collections/smart-filters/", data),
+  readingListItems: (id: number) => api.get(`/collections/reading-lists/${id}/items/`),
+  exportCbl: (id: number) =>
+    api.get(`/collections/reading-lists/${id}/export-cbl/`, { responseType: "blob" }),
+  importCbl: (id: number, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post(`/collections/reading-lists/${id}/import-cbl/`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+};
+
+// ─── Scrobble ────────────────────────────────────────────────────────────────
+export const scrobbleApi = {
+  list: () => api.get("/account/scrobble-credentials/"),
+  save: (provider: string, access_token: string) =>
+    api.post("/account/scrobble-credentials/", { provider, access_token }),
+  revoke: (provider: string) =>
+    api.delete(`/account/scrobble-credentials/${provider}/`),
 };
 
 // ─── Admin ───────────────────────────────────────────────────────────────────

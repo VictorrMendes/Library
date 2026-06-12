@@ -3,10 +3,10 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { Loader2, Eye, EyeOff, CheckCircle2, Key, Trash2, Plus, Camera } from "lucide-react";
-import { authApi } from "@/lib/api";
+import { Loader2, Eye, EyeOff, CheckCircle2, Key, Trash2, Plus, Camera, Radio, Link2Off } from "lucide-react";
+import { authApi, scrobbleApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
-import type { User } from "@/types";
+import type { User, ScrobbleCredential } from "@/types";
 import { clsx } from "clsx";
 
 interface PrefsForm {
@@ -41,6 +41,8 @@ export default function ProfilePage() {
   const [newKeyLabel, setNewKeyLabel] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [infoSuccess, setInfoSuccess] = useState(false);
+  const [anilistToken, setAnilistToken] = useState("");
+  const [malToken, setMalToken] = useState("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const prefForm = useForm<PrefsForm>({
@@ -100,6 +102,22 @@ export default function ProfilePage() {
       setPwSuccess(true);
       setTimeout(() => setPwSuccess(false), 3000);
     },
+  });
+
+  const { data: scrobbleCreds = [], refetch: refetchCreds } = useQuery<ScrobbleCredential[]>({
+    queryKey: ["scrobble-credentials"],
+    queryFn: () => scrobbleApi.list().then((r) => r.data as ScrobbleCredential[]),
+  });
+
+  const saveScrobbleMutation = useMutation({
+    mutationFn: ({ provider, token }: { provider: string; token: string }) =>
+      scrobbleApi.save(provider, token),
+    onSuccess: () => { refetchCreds(); setAnilistToken(""); setMalToken(""); },
+  });
+
+  const revokeScrobbleMutation = useMutation({
+    mutationFn: (provider: string) => scrobbleApi.revoke(provider),
+    onSuccess: () => refetchCreds(),
   });
 
   const { data: apiKeys = [], refetch: refetchKeys } = useQuery<ApiKey[]>({
@@ -414,6 +432,62 @@ export default function ProfilePage() {
             )}
           </div>
         </form>
+      </Section>
+
+      {/* Scrobbling */}
+      <Section title="Scrobbling (AniList / MAL)">
+        <p className="text-sm text-muted-foreground">
+          Conecte sua conta para registrar automaticamente o progresso quando um capítulo é concluído.
+        </p>
+        {[
+          { provider: "anilist" as const, label: "AniList", hint: "Token de acesso pessoal em anilist.co/settings/developer", token: anilistToken, setToken: setAnilistToken },
+          { provider: "mal" as const, label: "MyAnimeList", hint: "Access Token da API pública MAL v2", token: malToken, setToken: setMalToken },
+        ].map(({ provider, label, hint, token, setToken }) => {
+          const connected = scrobbleCreds.find((c) => c.provider === provider);
+          return (
+            <div key={provider} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Radio className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{label}</span>
+                </div>
+                {connected ? (
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-green-400">Conectado</span>
+                    <button
+                      onClick={() => revokeScrobbleMutation.mutate(provider)}
+                      disabled={revokeScrobbleMutation.isPending}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-red-400 transition-colors"
+                    >
+                      <Link2Off className="h-3.5 w-3.5" />
+                      Desconectar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={token}
+                      onChange={(e) => setToken(e.target.value)}
+                      placeholder="Cole o token aqui"
+                      className={clsx(inputCls, "w-56 text-xs")}
+                    />
+                    <button
+                      onClick={() => saveScrobbleMutation.mutate({ provider, token })}
+                      disabled={!token || saveScrobbleMutation.isPending}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+                    >
+                      {saveScrobbleMutation.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                      Conectar
+                    </button>
+                  </div>
+                )}
+              </div>
+              {!connected && (
+                <p className="text-xs text-muted-foreground pl-6">{hint}</p>
+              )}
+            </div>
+          );
+        })}
       </Section>
 
       {/* API Keys */}

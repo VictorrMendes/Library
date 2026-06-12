@@ -5,12 +5,21 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, X, Maximize2, Minimize2, Globe, Settings,
+  Bookmark, BookmarkPlus, Trash2,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { readerApi, authApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useTranslatorStore } from "@/store/translator";
 import { clsx } from "clsx";
+
+interface BookmarkEntry {
+  id: number;
+  chapter_id: number;
+  page: number;
+  label: string;
+  created_at: string;
+}
 
 const PdfViewer = dynamic(() => import("./PdfViewer"), {
   ssr: false,
@@ -51,6 +60,7 @@ function ReaderContent() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pdfNumPages, setPdfNumPages] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showBookmarks, setShowBookmarks] = useState(false);
   const [editingPage, setEditingPage] = useState(false);
   const [inputPage, setInputPage] = useState("");
   const [fontSize, setFontSize] = useState(user?.book_font_size ?? 16);
@@ -61,6 +71,9 @@ function ReaderContent() {
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const saveDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const webtoonRefs = useRef<(HTMLImageElement | null)[]>([]);
+  const webtoonObserver = useRef<IntersectionObserver | null>(null);
+  const webtoonDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: chapterData } = useQuery<ChapterData>({
     queryKey: ["reader", "chapter", chapterId],
@@ -73,6 +86,29 @@ function ReaderContent() {
         chapter_id: Number(chapterId),
         pages_read: page + 1,
       }),
+  });
+
+  const { data: bookmarks = [], refetch: refetchBookmarks } = useQuery<BookmarkEntry[]>({
+    queryKey: ["bookmarks", chapterId],
+    queryFn: () =>
+      readerApi.bookmarks().then((r) =>
+        (r.data as BookmarkEntry[]).filter((b) => b.chapter_id === Number(chapterId))
+      ),
+  });
+
+  const { mutate: addBookmark } = useMutation({
+    mutationFn: () =>
+      readerApi.createBookmark({
+        chapter_id: Number(chapterId),
+        page: currentPage,
+        label: `Página ${currentPage + 1}`,
+      }),
+    onSuccess: () => refetchBookmarks(),
+  });
+
+  const { mutate: removeBookmark } = useMutation({
+    mutationFn: (id: number) => readerApi.deleteBookmark(id),
+    onSuccess: () => refetchBookmarks(),
   });
 
   const { mutate: savePreferences } = useMutation({
@@ -154,6 +190,38 @@ function ReaderContent() {
       setIsFullscreen(false);
     }
   };
+
+  // Webtoon: IntersectionObserver tracks visible page + saves progress
+  useEffect(() => {
+    if (format !== "images" || mode !== "webtoon" || totalPages === 0) return;
+
+    webtoonObserver.current?.disconnect();
+    webtoonObserver.current = new IntersectionObserver(
+      (entries) => {
+        const best = entries
+          .filter((e) => e.isIntersecting && e.intersectionRatio > 0.1)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!best) return;
+        const idx = webtoonRefs.current.indexOf(best.target as HTMLImageElement);
+        if (idx < 0 || idx === currentPage) return;
+        clearTimeout(webtoonDebounce.current!);
+        webtoonDebounce.current = setTimeout(() => {
+          setCurrentPage(idx);
+          if (saveDebounce.current) clearTimeout(saveDebounce.current);
+          saveDebounce.current = setTimeout(() => saveProgress(idx), 1500);
+        }, 300);
+      },
+      { threshold: [0.1, 0.4, 0.7] }
+    );
+
+    const refs = webtoonRefs.current.slice(0, totalPages);
+    refs.forEach((el) => { if (el) webtoonObserver.current?.observe(el); });
+
+    return () => {
+      webtoonObserver.current?.disconnect();
+      clearTimeout(webtoonDebounce.current!);
+    };
+  }, [format, mode, totalPages, saveProgress, currentPage]);
 
   // Preload next pages for image viewer
   useEffect(() => {
@@ -259,6 +327,16 @@ function ReaderContent() {
             <Globe className="h-5 w-5" />
           </button>
           <button
+            onClick={(e) => { e.stopPropagation(); setShowBookmarks((v) => !v); setShowSettings(false); }}
+            title="Marcadores"
+            className={clsx("p-2 transition-colors relative", showBookmarks ? "text-primary" : "text-white/70 hover:text-white")}
+          >
+            <Bookmark className="h-5 w-5" />
+            {bookmarks.length > 0 && (
+              <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-primary" />
+            )}
+          </button>
+          <button
             onClick={() => setShowSettings((v) => !v)}
             title="Configurações"
             className={clsx("p-2 transition-colors", showSettings ? "text-primary" : "text-white/70 hover:text-white")}
@@ -286,6 +364,53 @@ function ReaderContent() {
           )}
         </div>
       </div>
+
+      {/* ── Bookmarks panel ─────────────────────────────────────────── */}
+      {showBookmarks && (
+        <div
+          className="fixed top-14 right-4 z-50 w-72 bg-black/90 border border-white/10 rounded-xl p-4 space-y-3 backdrop-blur-sm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-white">Marcadores</p>
+            <button
+              onClick={() => addBookmark()}
+              title="Adicionar marcador na página atual"
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              <BookmarkPlus className="h-4 w-4" />
+              Pg. {currentPage + 1}
+            </button>
+          </div>
+          {bookmarks.length === 0 ? (
+            <p className="text-xs text-white/40 text-center py-3">
+              Nenhum marcador. Clique em + para adicionar.
+            </p>
+          ) : (
+            <ul className="space-y-1 max-h-60 overflow-y-auto pr-1">
+              {bookmarks.map((bm) => (
+                <li
+                  key={bm.id}
+                  className="flex items-center justify-between gap-2 group"
+                >
+                  <button
+                    onClick={() => { goTo(bm.page); setShowBookmarks(false); }}
+                    className="flex-1 text-left text-sm text-white/80 hover:text-white truncate px-2 py-1 rounded hover:bg-white/10 transition-colors"
+                  >
+                    {bm.label || `Página ${bm.page + 1}`}
+                  </button>
+                  <button
+                    onClick={() => removeBookmark(bm.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-white/40 hover:text-red-400 transition-all"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* ── Settings panel ───────────────────────────────────────────── */}
       {showSettings && (
@@ -400,6 +525,7 @@ function ReaderContent() {
               {Array.from({ length: totalPages }, (_, i) => (
                 <img
                   key={i}
+                  ref={(el) => { webtoonRefs.current[i] = el; }}
                   src={chapterData.pages?.[i] ?? readerApi.imageUrl(Number(chapterId), i)}
                   alt={`Página ${i + 1}`}
                   className="w-full max-w-2xl"

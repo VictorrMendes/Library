@@ -12,7 +12,7 @@ import { ShelfButton } from "@/components/series/ShelfButton";
 import type { ShelfStatus } from "@/components/series/ShelfButton";
 import { SeriesDetailSkeleton } from "@/components/ui/Skeleton";
 import { SeriesCard } from "@/components/series/SeriesCard";
-import type { Series, Volume } from "@/types";
+import type { Series, SeriesRelation, Volume } from "@/types";
 import { clsx } from "clsx";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -22,6 +22,25 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelado",
   ended: "Encerrado",
   unknown: "Desconhecido",
+};
+
+const AGE_RATING_LABELS: Record<number, string> = {
+  1: "E", 2: "T", 3: "M", 4: "18+",
+};
+const AGE_RATING_COLORS: Record<number, string> = {
+  1: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
+  2: "bg-yellow-500/15 text-yellow-400 border border-yellow-500/20",
+  3: "bg-orange-500/15 text-orange-400 border border-orange-500/20",
+  4: "bg-red-500/15 text-red-400 border border-red-500/20",
+};
+const RELATION_LABELS: Record<SeriesRelation["relation_type"], string> = {
+  sequel: "Sequência",
+  prequel: "Prelúdio",
+  spin_off: "Spin-off",
+  adaptation: "Adaptação",
+  alternative: "Alternativo",
+  contains: "Contém",
+  side_story: "História paralela",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -251,6 +270,14 @@ export default function SeriesDetailPage() {
                   {meta.language}
                 </span>
               )}
+              {meta?.age_rating != null && meta.age_rating > 0 && AGE_RATING_LABELS[meta.age_rating] && (
+                <span className={clsx(
+                  "text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide",
+                  AGE_RATING_COLORS[meta.age_rating]
+                )}>
+                  {AGE_RATING_LABELS[meta.age_rating]}
+                </span>
+              )}
               <span className="text-xs text-muted-foreground">{totalChapters} capítulos</span>
               {series.avg_hours_to_read > 0 && (
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -347,6 +374,44 @@ export default function SeriesDetailPage() {
                 {t.name}
               </span>
             ))}
+          </div>
+        )}
+
+        {/* Related series */}
+        {series.relations && series.relations.length > 0 && (
+          <div className="mt-12">
+            <div className="section-rule mb-5">
+              <h2 className="font-classic text-xl font-medium shrink-0">Séries relacionadas</h2>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {series.relations.map((rel) => (
+                <a
+                  key={rel.id}
+                  href={`/series/${rel.target_id}`}
+                  className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border/50 hover:border-primary/40 hover:bg-accent/30 transition-colors group min-w-0 w-full sm:w-auto"
+                >
+                  {rel.target_cover ? (
+                    <img
+                      src={rel.target_cover}
+                      alt={rel.target_name}
+                      className="w-10 h-14 object-cover rounded shrink-0"
+                    />
+                  ) : (
+                    <div className="w-10 h-14 bg-muted rounded shrink-0 flex items-center justify-center">
+                      <BookOpen className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-xs text-primary font-medium uppercase tracking-wide mb-0.5">
+                      {RELATION_LABELS[rel.relation_type]}
+                    </p>
+                    <p className="text-sm font-medium truncate group-hover:text-foreground">
+                      {rel.target_name}
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
           </div>
         )}
 

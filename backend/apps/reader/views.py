@@ -391,7 +391,75 @@ def update_progress(request):
         progress.total_reads += 1
     progress.save()
 
+    if newly_complete:
+        _trigger_scrobble(request.user, chapter)
+
     return Response(ReadingProgressSerializer(progress).data)
+
+
+def _trigger_scrobble(user, chapter):
+    """Fire-and-forget: update AniList/MAL reading progress for the completed chapter."""
+    import threading
+    from apps.accounts.models import ScrobbleCredential
+
+    series = chapter.series
+    if not series.anilist_id and not series.mal_id:
+        return
+
+    creds = {
+        c.provider: c.access_token
+        for c in ScrobbleCredential.objects.filter(user=user, is_active=True)
+    }
+    if not creds:
+        return
+
+    progress_entries = list(
+        ReadingProgress.objects.filter(user=user, series=series)
+        .values_list("total_reads", flat=True)
+    )
+    total_reads = max(progress_entries) if progress_entries else 1
+
+    def _do_scrobble():
+        if "anilist" in creds and series.anilist_id:
+            try:
+                import urllib.request, json as _json
+                mutation = """
+                mutation ($mediaId: Int, $progress: Int) {
+                  SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { id }
+                }
+                """
+                payload = _json.dumps({
+                    "query": mutation,
+                    "variables": {"mediaId": series.anilist_id, "progress": total_reads},
+                }).encode()
+                req = urllib.request.Request(
+                    "https://graphql.anilist.co",
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {creds['anilist']}",
+                    },
+                    method="POST",
+                )
+                urllib.request.urlopen(req, timeout=10)
+            except Exception:
+                pass
+
+        if "mal" in creds and series.mal_id:
+            try:
+                import urllib.request, urllib.parse
+                body = urllib.parse.urlencode({"num_chapters_read": total_reads}).encode()
+                req = urllib.request.Request(
+                    f"https://api.myanimelist.net/v2/manga/{series.mal_id}/my_list_status",
+                    data=body,
+                    headers={"Authorization": f"Bearer {creds['mal']}"},
+                    method="PATCH",
+                )
+                urllib.request.urlopen(req, timeout=10)
+            except Exception:
+                pass
+
+    threading.Thread(target=_do_scrobble, daemon=True).start()
 
 
 @api_view(["GET"])

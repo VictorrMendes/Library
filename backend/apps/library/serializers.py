@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Library, Series, SeriesMetadata, Volume, Chapter, MangaFile, Genre, Tag, Person
+from .models import Library, Series, SeriesMetadata, SeriesRelation, Volume, Chapter, MangaFile, Genre, Tag, Person
 
 
 class GenreSerializer(serializers.ModelSerializer):
@@ -123,9 +123,25 @@ class VolumeSerializer(serializers.ModelSerializer):
         ]
 
 
+class SeriesRelationSerializer(serializers.ModelSerializer):
+    target_name = serializers.CharField(source="target.name", read_only=True)
+    target_cover = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SeriesRelation
+        fields = ["id", "target_id", "target_name", "target_cover", "relation_type"]
+
+    def get_target_cover(self, obj):
+        request = self.context.get("request")
+        if obj.target.cover_image and request:
+            return request.build_absolute_uri(obj.target.cover_image.url)
+        return None
+
+
 class SeriesDetailSerializer(serializers.ModelSerializer):
     metadata = SeriesMetadataSerializer(read_only=True)
     volumes = VolumeSerializer(many=True, read_only=True)
+    relations = SeriesRelationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Series
@@ -134,6 +150,6 @@ class SeriesDetailSerializer(serializers.ModelSerializer):
             "cover_image", "folder_path", "pages", "word_count",
             "min_hours_to_read", "max_hours_to_read", "avg_hours_to_read",
             "anilist_id", "mal_id", "dont_match",
-            "library_id", "metadata", "volumes",
+            "library_id", "metadata", "volumes", "relations",
             "created_at", "last_modified",
         ]
