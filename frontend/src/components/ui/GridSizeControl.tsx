@@ -2,7 +2,7 @@
 
 import { LayoutGrid, Grid2X2, Grid3X3 } from "lucide-react";
 import { clsx } from "clsx";
-import { useGridStore } from "@/store/grid";
+import { useGridStore, type GridSize } from "@/store/grid";
 
 const OPTIONS: { value: GridSize; icon: React.ElementType; title: string }[] = [
   { value: "lg", icon: Grid2X2, title: "Grande" },
