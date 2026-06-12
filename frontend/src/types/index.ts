@@ -79,6 +79,9 @@ export interface SeriesMetadata {
   genres: Genre[];
   tags: Tag[];
   people: Person[];
+  age_rating: number;
+  rating: number | null;
+  publisher: string;
 }
 
 export interface Series {
