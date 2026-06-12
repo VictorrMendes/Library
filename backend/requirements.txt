@@ -25,3 +25,4 @@ Pillow==10.4.0
 # Utilities
 python-slugify==8.0.4
 humanize==4.10.0
+whitenoise==6.7.0

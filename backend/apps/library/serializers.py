@@ -36,6 +36,15 @@ class LibrarySerializer(serializers.ModelSerializer):
     def get_series_count(self, obj):
         return obj.series.count()
 
+    def validate_folder_paths(self, value):
+        for path in value:
+            if not path.startswith("/"):
+                raise serializers.ValidationError(
+                    f"'{path}' não é um caminho absoluto. "
+                    "Use caminhos absolutos começando com '/', ex: /manga"
+                )
+        return value
+
 
 class SeriesMetadataSerializer(serializers.ModelSerializer):
     genres = GenreSerializer(many=True, read_only=True)
