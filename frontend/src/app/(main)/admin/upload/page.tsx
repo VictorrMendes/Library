@@ -68,12 +68,28 @@ export default function AdminUploadPage() {
     }
   }, [libraries, libraryId]);
 
-  // Poll processing jobs
+  // Poll jobs still in "processing" state (fallback for any pending backend tasks)
   useEffect(() => {
     const processing = items.filter((i) => i.status === "processing" && i.jobId);
     if (processing.length === 0) return;
 
+    let polls = 0;
+    const MAX_POLLS = 120; // 5 minutes at 2.5s interval
+
     const interval = setInterval(async () => {
+      polls++;
+      if (polls > MAX_POLLS) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.status === "processing"
+              ? { ...i, status: "failed", error: "Tempo esgotado. Verifique os logs do servidor." }
+              : i
+          )
+        );
+        clearInterval(interval);
+        return;
+      }
+
       await Promise.all(
         processing.map(async ({ jobId }) => {
           try {
@@ -150,10 +166,23 @@ export default function AdminUploadPage() {
           );
         });
 
+        const finalStatus =
+          data.status === "completed" || data.status === "failed"
+            ? data.status
+            : "processing";
+
         setItems((prev) =>
           prev.map((i) =>
             i.uid === item.uid
-              ? { ...i, status: "processing", jobId: data.id, uploadPct: 100 }
+              ? {
+                  ...i,
+                  status: finalStatus,
+                  jobId: data.id,
+                  uploadPct: 100,
+                  seriesName: data.series_name || undefined,
+                  targetPath: data.target_path || undefined,
+                  error: data.error_message || undefined,
+                }
               : i
           )
         );
