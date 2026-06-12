@@ -50,10 +50,10 @@ const mainNav = [
   { href: "/reading-lists", icon: List, label: "Listas de Leitura" },
   { href: "/want-to-read", icon: Heart, label: "Quero Ler" },
   { href: "/stats", icon: BarChart2, label: "Estatísticas" },
-  { href: "/admin/upload", icon: UploadCloud, label: "Upload" },
 ];
 
 const adminNav = [
+  { href: "/admin/upload", icon: UploadCloud, label: "Upload" },
   { href: "/admin/libraries", icon: Library, label: "Bibliotecas" },
   { href: "/admin/scanner", icon: ScanLine, label: "Scanner" },
   { href: "/admin/users", icon: Users, label: "Usuários" },
@@ -163,18 +163,20 @@ export function Sidebar() {
               </span>
             </Link>
             <div className="flex items-center gap-1">
-              <Link
-                href="/admin/libraries"
-                title="Gerenciar bibliotecas"
-                className={clsx(
-                  "p-1.5 rounded-md transition-colors",
-                  isActive("/admin/libraries")
-                    ? "text-primary bg-primary/10"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                )}
-              >
-                <Cog className="h-4 w-4" strokeWidth={1.75} />
-              </Link>
+              {isAdmin && (
+                <Link
+                  href="/admin/libraries"
+                  title="Gerenciar bibliotecas"
+                  className={clsx(
+                    "p-1.5 rounded-md transition-colors",
+                    isActive("/admin/libraries")
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  )}
+                >
+                  <Cog className="h-4 w-4" strokeWidth={1.75} />
+                </Link>
+              )}
               <button
                 onClick={() => setIsOpen(false)}
                 className="md:hidden p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
