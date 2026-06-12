@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Self-hosted fonts from Kavita assets ───────────────── */
+/* ── Self-hosted fonts ───────────────────────────────────── */
 @font-face {
   font-family: "Fira Sans";
   src: url("/fonts/FiraSans/FiraSans-Regular.woff2") format("woff2");
@@ -50,46 +50,49 @@
 }
 
 @layer base {
+  /* ── Warm editorial dark theme (default) ─────────────── */
   :root {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 6%;
-    --card-foreground: 213 31% 91%;
-    --popover: 224 71% 6%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 213 31% 91%;
-    --muted: 215 28% 14%;
-    --muted-foreground: 215 20% 55%;
-    --accent: 215 28% 17%;
-    --accent-foreground: 213 31% 91%;
-    --border: 215 28% 17%;
-    --input: 215 28% 17%;
-    --ring: 239 84% 67%;
-    --radius: 0.75rem;
-    --font-sans: "Inter", system-ui, sans-serif;
+    --background: 28 18% 5%;
+    --foreground: 36 16% 88%;
+    --card: 28 12% 9%;
+    --card-foreground: 36 16% 88%;
+    --popover: 28 12% 9%;
+    --popover-foreground: 36 16% 88%;
+    --primary: 38 82% 57%;
+    --primary-foreground: 28 18% 5%;
+    --secondary: 28 10% 15%;
+    --secondary-foreground: 36 10% 65%;
+    --muted: 28 10% 12%;
+    --muted-foreground: 36 8% 48%;
+    --accent: 28 10% 17%;
+    --accent-foreground: 36 16% 88%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 28 10% 18%;
+    --input: 28 10% 15%;
+    --ring: 38 82% 57%;
+    --radius: 0.5rem;
   }
 
+  /* ── Warm paper light theme ──────────────────────────── */
   .light {
-    --background: 0 0% 98%;
-    --foreground: 224 71% 4%;
+    --background: 38 28% 97%;
+    --foreground: 28 15% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 224 71% 4%;
+    --card-foreground: 28 15% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 71% 4%;
-    --primary: 239 84% 67%;
+    --popover-foreground: 28 15% 10%;
+    --primary: 38 82% 48%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 9% 46%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 220 14% 96%;
-    --accent-foreground: 220 9% 46%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 239 84% 67%;
+    --secondary: 38 14% 93%;
+    --secondary-foreground: 28 10% 40%;
+    --muted: 38 12% 94%;
+    --muted-foreground: 38 8% 50%;
+    --accent: 38 14% 92%;
+    --accent-foreground: 28 15% 10%;
+    --border: 38 10% 87%;
+    --input: 38 10% 90%;
+    --ring: 38 82% 48%;
   }
 }
 
@@ -97,17 +100,68 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground antialiased;
+    font-feature-settings: "kern" 1, "liga" 1;
   }
+
+  /* Thin warm scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted rounded-full;
+    background-color: hsl(var(--border));
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.35);
+  }
+
+  /* Focus ring — amber, not blue */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+/* ── Utility classes ─────────────────────────────────────── */
+@layer utilities {
+  /* Subtle noise grain on backgrounds */
+  .grain {
+    position: relative;
+  }
+  .grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+  }
+
+  /* Decorative section rule */
+  .section-rule {
+    @apply flex items-center gap-4;
+  }
+  .section-rule::after {
+    content: '';
+    @apply flex-1 h-px bg-border/60;
+  }
+
+  /* Cover card hover glow */
+  .cover-glow {
+    transition: box-shadow 0.25s ease, transform 0.25s ease;
+  }
+  .cover-glow:hover {
+    box-shadow: 0 8px 30px -4px hsl(var(--primary) / 0.25),
+                0 4px 10px -2px hsl(var(--primary) / 0.12);
+    transform: translateY(-2px);
   }
 }

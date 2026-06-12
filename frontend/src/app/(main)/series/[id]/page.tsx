@@ -22,6 +22,15 @@ const STATUS_LABELS: Record<string, string> = {
   unknown: "Desconhecido",
 };
 
+const STATUS_COLORS: Record<string, string> = {
+  ongoing: "bg-sky-500/15 text-sky-400 border border-sky-500/20",
+  completed: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
+  hiatus: "bg-amber-500/15 text-amber-400 border border-amber-500/20",
+  cancelled: "bg-red-500/15 text-red-400 border border-red-500/20",
+  ended: "bg-zinc-500/15 text-zinc-400 border border-zinc-500/20",
+  unknown: "bg-muted text-muted-foreground border border-border",
+};
+
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -119,46 +128,46 @@ export default function SeriesDetailPage() {
   };
 
   if (isLoading) return <SeriesDetailSkeleton />;
-
   if (!series) return null;
 
   const meta = series.metadata;
   const writers = meta?.people?.filter((p) => p.role === "writer") ?? [];
   const artists = meta?.people?.filter((p) => p.role === "penciller") ?? [];
   const totalChapters = volumes?.reduce((acc, v) => acc + v.chapters.length, 0) ?? 0;
+  const statusColor = meta?.publication_status ? STATUS_COLORS[meta.publication_status] : null;
 
   return (
     <div className="min-h-screen">
-      {/* Hero */}
-      <div className="relative h-48 sm:h-72 overflow-hidden">
+      {/* Blurred hero */}
+      <div className="relative h-52 sm:h-80 overflow-hidden">
         {series.cover_image && (
           <Image
             src={series.cover_image}
             alt={series.name}
             fill
-            className="object-cover blur-xl scale-110 opacity-20"
+            className="object-cover blur-2xl scale-110 opacity-25"
             priority
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/40 to-background" />
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-24 sm:-mt-40 relative z-10 pb-12">
-        <div className="flex gap-4 sm:gap-6">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-28 sm:-mt-44 relative z-10 pb-16">
+        <div className="flex gap-5 sm:gap-7">
           {/* Cover */}
-          <div className="shrink-0 w-28 h-40 sm:w-36 sm:h-52 relative group">
-            <div className="rounded-xl overflow-hidden border border-border shadow-xl shadow-black/40 w-full h-full">
+          <div className="shrink-0 w-28 h-40 sm:w-40 sm:h-56 relative group">
+            <div className="rounded-md overflow-hidden shadow-2xl shadow-black/60 w-full h-full border border-white/5">
               {series.cover_image ? (
                 <Image
                   src={series.cover_image}
                   alt={series.name}
-                  width={144}
-                  height={208}
+                  width={160}
+                  height={224}
                   className="object-cover w-full h-full"
                 />
               ) : (
                 <div className="w-full h-full bg-muted flex items-center justify-center">
-                  <BookOpen className="h-10 w-10 text-muted-foreground" />
+                  <BookOpen className="h-10 w-10 text-muted-foreground" strokeWidth={1.5} />
                 </div>
               )}
             </div>
@@ -166,11 +175,11 @@ export default function SeriesDetailPage() {
               onClick={() => coverInputRef.current?.click()}
               disabled={coverMutation.isPending}
               title="Alterar capa"
-              className="absolute inset-0 rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+              className="absolute inset-0 rounded-md bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
             >
               {coverMutation.isPending
                 ? <Loader2 className="h-6 w-6 text-white animate-spin" />
-                : <Camera className="h-6 w-6 text-white" />}
+                : <Camera className="h-6 w-6 text-white" strokeWidth={1.5} />}
             </button>
             <input
               ref={coverInputRef}
@@ -182,17 +191,22 @@ export default function SeriesDetailPage() {
           </div>
 
           {/* Info */}
-          <div className="flex-1 min-w-0 pt-10 sm:pt-16">
-            <h1 className="text-xl sm:text-2xl font-bold font-sans leading-tight">
+          <div className="flex-1 min-w-0 pt-12 sm:pt-20">
+            <h1 className="font-classic text-2xl sm:text-3xl font-medium leading-tight tracking-tight">
               {series.localized_name || series.name}
             </h1>
             {series.original_name && series.original_name !== series.name && (
-              <p className="text-sm text-muted-foreground mt-0.5">{series.original_name}</p>
+              <p className="text-sm text-muted-foreground mt-0.5 font-classic">
+                {series.original_name}
+              </p>
             )}
 
-            <div className="flex flex-wrap items-center gap-3 mt-3">
-              {meta?.publication_status && (
-                <span className="text-xs font-medium px-2 py-1 rounded-full bg-primary/10 text-primary">
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              {meta?.publication_status && statusColor && (
+                <span className={clsx(
+                  "text-[10px] font-semibold px-2 py-0.5 rounded-sm uppercase tracking-wide",
+                  statusColor
+                )}>
                   {STATUS_LABELS[meta.publication_status]}
                 </span>
               )}
@@ -200,43 +214,45 @@ export default function SeriesDetailPage() {
                 <span className="text-xs text-muted-foreground">{meta.release_year}</span>
               )}
               {meta?.language && (
-                <span className="text-xs text-muted-foreground uppercase">{meta.language}</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                  {meta.language}
+                </span>
               )}
               <span className="text-xs text-muted-foreground">{totalChapters} capítulos</span>
               {series.avg_hours_to_read > 0 && (
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
+                  <Clock className="h-3 w-3" strokeWidth={1.75} />
                   {series.avg_hours_to_read.toFixed(1)}h
                 </span>
               )}
             </div>
 
-            <div className="flex gap-2 mt-4 flex-wrap">
+            <div className="flex gap-2 mt-5 flex-wrap">
               <button
                 onClick={handleContinue}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
               >
-                <Play className="h-4 w-4 fill-current" />
+                <Play className="h-3.5 w-3.5 fill-current" />
                 Continuar
               </button>
               <button
                 onClick={() => collectionsApi.addWantToRead(series.id)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-sm font-medium hover:bg-accent transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium hover:bg-accent transition-colors"
               >
-                <Heart className="h-4 w-4" />
+                <Heart className="h-3.5 w-3.5" strokeWidth={1.75} />
                 Quero Ler
               </button>
               <button
                 onClick={openEditMeta}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-sm font-medium hover:bg-accent transition-colors"
+                className="px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium hover:bg-accent transition-colors"
               >
                 Editar
               </button>
               <button
                 onClick={() => setDeleteConfirm(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-sm font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-colors"
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
                 Apagar
               </button>
             </div>
@@ -245,39 +261,49 @@ export default function SeriesDetailPage() {
 
         {/* Summary */}
         {meta?.summary && (
-          <div className="mt-8">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Sinopse</h2>
-            <p className="text-sm leading-relaxed text-foreground/80">{meta.summary}</p>
+          <div className="mt-10">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              Sinopse
+            </p>
+            <p className="font-classic text-base leading-relaxed text-foreground/80 max-w-2xl">
+              {meta.summary}
+            </p>
           </div>
         )}
 
-        {/* Metadata grid */}
-        <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
-          {writers.length > 0 && (
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Escritor</p>
-              <p className="text-sm font-medium">{writers.map((w) => w.name).join(", ")}</p>
-            </div>
-          )}
-          {artists.length > 0 && (
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Arte</p>
-              <p className="text-sm font-medium">{artists.map((a) => a.name).join(", ")}</p>
-            </div>
-          )}
-        </div>
+        {/* Meta grid */}
+        {(writers.length > 0 || artists.length > 0) && (
+          <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-5 border-t border-border/50 pt-6">
+            {writers.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                  Escritor
+                </p>
+                <p className="text-sm font-medium">{writers.map((w) => w.name).join(", ")}</p>
+              </div>
+            )}
+            {artists.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                  Arte
+                </p>
+                <p className="text-sm font-medium">{artists.map((a) => a.name).join(", ")}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Genres + Tags */}
         {((meta?.genres?.length ?? 0) > 0 || (meta?.tags?.length ?? 0) > 0) && (
-          <div className="mt-6 flex flex-wrap gap-2">
+          <div className="mt-6 flex flex-wrap gap-1.5">
             {meta?.genres?.map((g) => (
-              <span key={g.id} className="text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+              <span key={g.id} className="text-[11px] px-2.5 py-1 rounded-sm bg-primary/10 text-primary border border-primary/15">
                 {g.name}
               </span>
             ))}
             {meta?.tags?.map((t) => (
-              <span key={t.id} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground">
-                <Tag className="h-3 w-3" />
+              <span key={t.id} className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-sm bg-secondary text-secondary-foreground border border-border/50">
+                <Tag className="h-2.5 w-2.5" strokeWidth={1.75} />
                 {t.name}
               </span>
             ))}
@@ -286,8 +312,10 @@ export default function SeriesDetailPage() {
 
         {/* Similar series */}
         {similar && similar.length > 0 && (
-          <div className="mt-10">
-            <h2 className="text-base font-semibold mb-4">Séries similares</h2>
+          <div className="mt-12">
+            <div className="section-rule mb-5">
+              <h2 className="font-classic text-xl font-medium shrink-0">Séries similares</h2>
+            </div>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
               {similar.map((s) => (
                 <SeriesCard key={s.id} series={s} />
@@ -298,9 +326,11 @@ export default function SeriesDetailPage() {
 
         {/* Volumes + Chapters */}
         {volumes && volumes.length > 0 && (
-          <div className="mt-10">
-            <h2 className="text-base font-semibold mb-4">Volumes e Capítulos</h2>
-            <div className="space-y-3">
+          <div className="mt-12">
+            <div className="section-rule mb-5">
+              <h2 className="font-classic text-xl font-medium shrink-0">Volumes e Capítulos</h2>
+            </div>
+            <div className="space-y-2">
               {volumes.map((vol) => (
                 <VolumeAccordion key={vol.id} volume={vol} progress={progress ?? []} />
               ))}
@@ -312,79 +342,85 @@ export default function SeriesDetailPage() {
       {/* Edit metadata modal */}
       {editMeta && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setEditMeta(false)} />
-          <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-md space-y-4 shadow-xl">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setEditMeta(false)} />
+          <div className="relative bg-card border border-border/60 rounded-lg p-6 w-full max-w-md space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold">Editar metadados</h2>
+              <h2 className="font-classic text-lg font-medium">Editar metadados</h2>
               <button
                 onClick={() => fetchMetaMutation.mutate()}
                 disabled={fetchMetaMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors disabled:opacity-60"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-xs font-medium hover:bg-accent transition-colors disabled:opacity-60"
               >
-                {fetchMetaMutation.isPending
-                  ? <Loader2 className="h-3 w-3 animate-spin" />
-                  : null}
+                {fetchMetaMutation.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
                 Buscar online
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1 block">Sinopse</label>
+                <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
+                  Sinopse
+                </label>
                 <textarea
                   value={metaForm.summary}
                   onChange={(e) => setMetaForm((f) => ({ ...f, summary: e.target.value }))}
                   rows={4}
-                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                  className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground font-medium mb-1 block">Status</label>
+                  <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
+                    Status
+                  </label>
                   <select
                     value={metaForm.publication_status}
                     onChange={(e) => setMetaForm((f) => ({ ...f, publication_status: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   >
                     <option value="">—</option>
-                    {["ongoing","completed","hiatus","cancelled","ended"].map((s) => (
+                    {["ongoing", "completed", "hiatus", "cancelled", "ended"].map((s) => (
                       <option key={s} value={s}>{STATUS_LABELS[s]}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground font-medium mb-1 block">Ano</label>
+                  <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
+                    Ano
+                  </label>
                   <input
                     type="number"
                     value={metaForm.release_year}
                     onChange={(e) => setMetaForm((f) => ({ ...f, release_year: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 </div>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1 block">Idioma</label>
+                <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
+                  Idioma
+                </label>
                 <input
                   value={metaForm.language}
                   onChange={(e) => setMetaForm((f) => ({ ...f, language: e.target.value }))}
                   placeholder="pt, en, ja…"
-                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
               </div>
             </div>
             {updateMetaMutation.isError && (
               <p className="text-sm text-red-400">Erro ao salvar. Tente novamente.</p>
             )}
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => setEditMeta(false)}
-                className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
+                className="px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium hover:bg-accent transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={() => updateMetaMutation.mutate()}
                 disabled={updateMetaMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+                className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
               >
                 {updateMetaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 Salvar
@@ -394,31 +430,33 @@ export default function SeriesDetailPage() {
         </div>
       )}
 
-      {/* Delete confirmation modal */}
+      {/* Delete confirmation */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(false)} />
-          <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-sm space-y-4 shadow-xl">
-            <h2 className="text-base font-semibold">Apagar série?</h2>
-            <p className="text-sm text-muted-foreground">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setDeleteConfirm(false)} />
+          <div className="relative bg-card border border-border/60 rounded-lg p-6 w-full max-w-sm space-y-4 shadow-2xl">
+            <h2 className="font-classic text-lg font-medium">Apagar série?</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
               Tem certeza que deseja apagar{" "}
-              <span className="text-foreground font-medium">"{series.localized_name || series.name}"</span>?{" "}
-              Esta ação não pode ser desfeita. Os arquivos físicos não serão removidos do disco.
+              <span className="text-foreground font-medium">
+                &ldquo;{series.localized_name || series.name}&rdquo;
+              </span>
+              ? Esta ação não pode ser desfeita. Os arquivos físicos não serão removidos do disco.
             </p>
             {deleteMutation.isError && (
               <p className="text-sm text-red-400">Erro ao apagar. Tente novamente.</p>
             )}
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeleteConfirm(false)}
-                className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
+                className="px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium hover:bg-accent transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors disabled:opacity-60"
+                className="flex items-center gap-2 px-4 py-2 rounded-md bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors disabled:opacity-60"
               >
                 {deleteMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 Apagar
@@ -443,45 +481,56 @@ function VolumeAccordion({
     (c) => progressMap.get(c.id)?.is_completed
   ).length;
   const router = useRouter();
+  const pct = volume.chapters.length > 0
+    ? (completedCount / volume.chapters.length) * 100
+    : 0;
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
+    <div className="bg-card border border-border/50 rounded-md overflow-hidden">
       <div className="px-4 py-3 flex items-center justify-between">
         <div>
           <p className="font-medium text-sm">{volume.name}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {completedCount}/{volume.chapters.length} capítulos
           </p>
         </div>
-        <div className="w-24 h-1.5 bg-secondary rounded-full">
-          <div
-            className="h-full bg-primary rounded-full"
-            style={{ width: `${(completedCount / volume.chapters.length) * 100}%` }}
-          />
+        <div className="flex items-center gap-3">
+          <div className="w-20 h-1 bg-secondary rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="divide-y divide-border">
+      <div className="divide-y divide-border/40">
         {volume.chapters.map((ch) => {
           const prog = progressMap.get(ch.id);
           return (
             <button
               key={ch.id}
               onClick={() => router.push(`/reader/${ch.id}`)}
-              className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-accent/50 transition-colors text-left"
+              className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-accent/40 transition-colors text-left group"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div className={clsx(
-                  "h-2 w-2 rounded-full shrink-0",
-                  prog?.is_completed ? "bg-green-500" : prog?.pages_read ? "bg-yellow-500" : "bg-border"
+                  "h-1.5 w-1.5 rounded-full shrink-0 transition-colors",
+                  prog?.is_completed
+                    ? "bg-emerald-500"
+                    : prog?.pages_read
+                    ? "bg-amber-500"
+                    : "bg-border"
                 )} />
-                <p className="text-sm truncate">{ch.title || `Capítulo ${ch.range || ch.min_number}`}</p>
+                <p className="text-sm truncate text-foreground/80 group-hover:text-foreground transition-colors">
+                  {ch.title || `Capítulo ${ch.range || ch.min_number}`}
+                </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {ch.pages > 0 && (
                   <span className="text-xs text-muted-foreground">{ch.pages}p</span>
                 )}
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.75} />
               </div>
             </button>
           );

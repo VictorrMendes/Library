@@ -116,7 +116,7 @@ export default function SearchPage() {
     <div className="p-6 space-y-6 max-w-screen-2xl">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold font-sans">Buscar</h1>
+        <h1 className="font-classic text-2xl font-medium tracking-tight">Buscar</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Pesquise por nome, autor ou descrição.
         </p>

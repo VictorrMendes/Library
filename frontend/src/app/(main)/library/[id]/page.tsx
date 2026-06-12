@@ -121,7 +121,7 @@ export default function LibraryPage() {
             <Library className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold font-sans truncate">
+            <h1 className="text-xl sm:text-2xl font-medium font-classic tracking-tight truncate">
               {library?.name ?? "Biblioteca"}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
