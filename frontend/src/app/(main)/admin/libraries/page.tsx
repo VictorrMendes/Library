@@ -310,7 +310,7 @@ export default function AdminLibrariesPage() {
                   {...register("folder_paths")}
                   rows={3}
                   className="w-full px-3 py-2.5 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-                  placeholder="/manga&#10;/books/mangas"
+                  placeholder="/biblioteca/manga&#10;/biblioteca/livros&#10;/biblioteca/comics"
                 />
               </div>
 
