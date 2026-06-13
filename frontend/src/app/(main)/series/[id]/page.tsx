@@ -431,12 +431,12 @@ export default function SeriesDetailPage() {
           <div className="section-rule mb-5">
             <h2 className="font-classic text-xl font-medium shrink-0">Avaliações</h2>
             <div className="flex items-center gap-3 ml-auto">
-              {(series as Record<string, unknown>).avg_score != null && (
+              {series.avg_score != null && (
                 <span className="flex items-center gap-1 text-sm font-semibold text-amber-400">
                   <Star className="h-4 w-4 fill-amber-400" />
-                  {((series as Record<string, unknown>).avg_score as number).toFixed(1)}
+                  {series.avg_score.toFixed(1)}
                   <span className="text-muted-foreground font-normal text-xs">
-                    ({(series as Record<string, unknown>).rating_count as number})
+                    ({series.rating_count ?? 0})
                   </span>
                 </span>
               )}

@@ -99,6 +99,9 @@ export interface Series {
   relations?: SeriesRelation[];
   anilist_id?: number | null;
   mal_id?: number | null;
+  avg_score?: number | null;
+  rating_count?: number;
+  dominant_color?: string;
   created_at: string;
   last_modified: string;
 }
