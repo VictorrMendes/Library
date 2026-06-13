@@ -39,10 +39,8 @@ const TYPE_COLORS: Record<string, string> = {
 interface LibraryForm {
   name: string;
   type: "manga" | "comic" | "book" | "light_novel" | "image";
-  folder_paths: string;
   include_in_dashboard: boolean;
   include_in_search: boolean;
-  folder_watching: boolean;
 }
 
 function formatDate(iso: string | null) {
@@ -81,21 +79,20 @@ export default function LibrariesPage() {
   });
 
   const { register, handleSubmit, reset, formState: { isSubmitting, errors } } = useForm<LibraryForm>({
-    defaultValues: { type: "manga", include_in_dashboard: true, include_in_search: true, folder_watching: false },
+    defaultValues: { type: "manga", include_in_dashboard: true, include_in_search: true },
   });
 
   function openCreate() {
-    reset({ name: "", type: "manga", folder_paths: "", include_in_dashboard: true, include_in_search: true, folder_watching: false });
+    reset({ name: "", type: "manga", include_in_dashboard: true, include_in_search: true });
     setModal({ open: true, editing: null });
   }
 
   function openEdit(lib: LibraryType) {
     reset({
-      name: lib.name, type: lib.type,
-      folder_paths: lib.folder_paths.join("\n"),
+      name: lib.name,
+      type: lib.type,
       include_in_dashboard: lib.include_in_dashboard,
       include_in_search: lib.include_in_search,
-      folder_watching: lib.folder_watching,
     });
     setModal({ open: true, editing: lib });
   }
@@ -106,10 +103,8 @@ export default function LibrariesPage() {
     const payload = {
       name: form.name.trim(),
       type: form.type,
-      folder_paths: form.folder_paths.split(/[\n,]+/).map((p) => p.trim()).filter((p) => p.startsWith("/")),
       include_in_dashboard: form.include_in_dashboard,
       include_in_search: form.include_in_search,
-      folder_watching: form.folder_watching,
     };
     if (modal.editing) {
       await updateMutation.mutateAsync({ id: modal.editing.id, data: payload });
@@ -280,31 +275,22 @@ export default function LibrariesPage() {
                 </select>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Pastas</label>
-                <textarea
-                  {...register("folder_paths")}
-                  rows={3}
-                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                  placeholder={"/biblioteca/manga\n/mnt/dados/livros"}
-                />
-                <p className="text-xs text-muted-foreground">Uma pasta por linha. Caminhos absolutos começando com /</p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" {...register("include_in_dashboard")} className="rounded border-border accent-primary" />
+                  <span className="text-sm">Incluir no Dashboard</span>
+                </label>
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" {...register("include_in_search")} className="rounded border-border accent-primary" />
+                  <span className="text-sm">Incluir na Busca</span>
+                </label>
               </div>
 
-              <div className="space-y-2">
-                {(
-                  [
-                    { name: "include_in_dashboard" as const, label: "Incluir no Dashboard" },
-                    { name: "include_in_search" as const, label: "Incluir na Busca" },
-                    { name: "folder_watching" as const, label: "Monitorar pasta automaticamente" },
-                  ] as const
-                ).map(({ name, label }) => (
-                  <label key={name} className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" {...register(name)} className="rounded border-border accent-primary" />
-                    <span className="text-sm">{label}</span>
-                  </label>
-                ))}
-              </div>
+              {!modal.editing && (
+                <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+                  A pasta será criada automaticamente em <code className="font-mono">/biblioteca/{"{nome}"}</code>
+                </p>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button

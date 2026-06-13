@@ -43,7 +43,21 @@ class LibraryViewSet(viewsets.ModelViewSet):
         return Library.objects.all()
 
     def perform_create(self, serializer):
-        serializer.save()
+        import re
+        from pathlib import Path
+        from django.conf import settings
+
+        folder_paths = serializer.validated_data.get("folder_paths", [])
+        if not folder_paths:
+            name = serializer.validated_data.get("name", "biblioteca")
+            safe = re.sub(r"[^\w\s-]", "", name, flags=re.UNICODE).strip()
+            safe = re.sub(r"[\s]+", "_", safe).lower()
+            safe = safe or "biblioteca"
+            auto_path = Path(settings.LIBRARY_ROOT) / safe
+            auto_path.mkdir(parents=True, exist_ok=True)
+            serializer.save(folder_paths=[str(auto_path)])
+        else:
+            serializer.save()
 
     @action(detail=True, methods=["post"])
     def scan(self, request, pk=None):

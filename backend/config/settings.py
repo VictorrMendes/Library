@@ -92,6 +92,7 @@ MEDIA_ROOT = config("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 
 COVERS_ROOT = config("COVERS_ROOT", default=str(BASE_DIR / "covers"))
 UPLOADS_ROOT = config("UPLOADS_ROOT", default=str(BASE_DIR / "uploads"))
+LIBRARY_ROOT = config("LIBRARY_ROOT", default="/biblioteca")
 
 # Allow large file uploads (CBZ/EPUB can exceed 100 MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024  # 500 MB non-file fields

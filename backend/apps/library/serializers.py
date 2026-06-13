@@ -37,15 +37,12 @@ class LibrarySerializer(serializers.ModelSerializer):
         return obj.series.count()
 
     def validate_folder_paths(self, value):
-        if not value:
-            raise serializers.ValidationError(
-                "Informe ao menos uma pasta, ex: /manga"
-            )
+        # Empty list is allowed — perform_create will auto-generate the path
         for path in value:
             if not path.startswith("/"):
                 raise serializers.ValidationError(
                     f"'{path}' não é um caminho absoluto. "
-                    "Use caminhos absolutos começando com '/', ex: /manga"
+                    "Use caminhos absolutos começando com '/', ex: /biblioteca/manga"
                 )
         return value
 
