@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Palette, Type, Key, Download, Check, Plus, Trash2,
-  Loader2, Copy, Eye, EyeOff,
+  Loader2, Copy, Eye, EyeOff, Database, Smartphone, Upload,
+  AlertCircle, FileText,
 } from "lucide-react";
-import { authApi, apiKeysApi, progressApi } from "@/lib/api";
+import { authApi, apiKeysApi, progressApi, backupApi, deviceProfilesApi, fontsApi, scrobbleErrorsApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { clsx } from "clsx";
 
@@ -54,6 +55,10 @@ export default function SettingsPage() {
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [annotationLoading, setAnnotationLoading] = useState(false);
+  const [fontName, setFontName] = useState("");
+  const [fontFile, setFontFile] = useState<File | null>(null);
 
   const currentTheme = user?.theme ?? "dark";
   const currentFont = user?.book_font_family ?? "serif";
@@ -65,6 +70,48 @@ export default function SettingsPage() {
   const { mutate: savePrefs } = useMutation({
     mutationFn: (prefs: Record<string, unknown>) => authApi.updatePreferences(prefs),
     onSuccess: (res) => setUser(res.data),
+  });
+
+  const { data: deviceProfiles = [], refetch: refetchProfiles } = useQuery({
+    queryKey: ["device-profiles"],
+    queryFn: () => deviceProfilesApi.list().then((r) => r.data as Array<{
+      id: number; device_name: string; reading_mode: string;
+      reading_direction: string; book_font_family: string;
+    }>),
+  });
+
+  const deleteProfileMutation = useMutation({
+    mutationFn: (id: number) => deviceProfilesApi.delete(id),
+    onSuccess: () => refetchProfiles(),
+  });
+
+  const { data: customFonts = [], refetch: refetchFonts } = useQuery({
+    queryKey: ["fonts"],
+    queryFn: () => fontsApi.list().then((r) => r.data.results ?? r.data),
+  });
+
+  const uploadFontMutation = useMutation({
+    mutationFn: ({ name, file }: { name: string; file: File }) =>
+      fontsApi.upload(name, file),
+    onSuccess: () => { refetchFonts(); setFontName(""); setFontFile(null); },
+  });
+
+  const deleteFontMutation = useMutation({
+    mutationFn: (id: number) => fontsApi.delete(id),
+    onSuccess: () => refetchFonts(),
+  });
+
+  const { data: scrobbleErrors = [] } = useQuery({
+    queryKey: ["scrobble-errors"],
+    queryFn: () => scrobbleErrorsApi.list().then((r) => r.data as Array<{
+      id: number; provider: string; series_name: string;
+      error_message: string; attempted_at: string;
+    }>),
+  });
+
+  const resolveErrorMutation = useMutation({
+    mutationFn: (id: number) => scrobbleErrorsApi.resolve(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["scrobble-errors"] }),
   });
 
   const { data: apiKeys = [], refetch: refetchKeys } = useQuery<ApiKey[]>({
@@ -98,6 +145,36 @@ export default function SettingsPage() {
       URL.revokeObjectURL(url);
     } finally {
       setExportLoading(false);
+    }
+  }
+
+  async function handleBackup() {
+    setBackupLoading(true);
+    try {
+      const res = await backupApi.download();
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "biblioteca_backup.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
+  async function handleExportAnnotations() {
+    setAnnotationLoading(true);
+    try {
+      const res = await backupApi.exportAnnotations();
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `annotations_${user?.username ?? "export"}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setAnnotationLoading(false);
     }
   }
 
@@ -250,28 +327,153 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* ── Progress Export ───────────────────────────────────────────────── */}
+      {/* ── Progress & Annotations Export ────────────────────────────────── */}
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           <Download className="h-4 w-4 text-primary" />
-          <h2 className="font-semibold">Exportar Progresso</h2>
+          <h2 className="font-semibold">Exportar Dados</h2>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleExport}
+            disabled={exportLoading}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-card border border-border text-sm font-medium hover:bg-accent transition-colors disabled:opacity-60"
+          >
+            {exportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Progresso (.json)
+          </button>
+          <button
+            onClick={handleExportAnnotations}
+            disabled={annotationLoading}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-card border border-border text-sm font-medium hover:bg-accent transition-colors disabled:opacity-60"
+          >
+            {annotationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            Anotações (.json)
+          </button>
+          {user?.role === "admin" && (
+            <button
+              onClick={handleBackup}
+              disabled={backupLoading}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-card border border-amber-500/30 text-sm font-medium hover:bg-amber-500/10 transition-colors disabled:opacity-60 text-amber-400"
+            >
+              {backupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+              Backup BD completo
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* ── Device Profiles ───────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Smartphone className="h-4 w-4 text-primary" />
+          <h2 className="font-semibold">Perfis por Dispositivo</h2>
         </div>
         <p className="text-sm text-muted-foreground">
-          Baixe um arquivo JSON com todo seu histórico de leitura, progresso por capítulo e marcadores.
+          Salve configurações de leitura separadas para cada dispositivo (celular, tablet, desktop).
         </p>
-        <button
-          onClick={handleExport}
-          disabled={exportLoading}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-card border border-border text-sm font-medium hover:bg-accent transition-colors disabled:opacity-60"
-        >
-          {exportLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
-          Exportar progresso (.json)
-        </button>
+        {deviceProfiles.length > 0 ? (
+          <div className="space-y-2">
+            {deviceProfiles.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-card border border-border">
+                <div>
+                  <p className="text-sm font-medium">{p.device_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {[p.reading_direction, p.reading_mode, p.book_font_family].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                <button
+                  onClick={() => deleteProfileMutation.mutate(p.id)}
+                  className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Nenhum perfil salvo. Os perfis são criados automaticamente ao ler em um dispositivo.</p>
+        )}
       </section>
+
+      {/* ── Custom EPUB Fonts (admin) ─────────────────────────────────────── */}
+      {user?.role === "admin" && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Upload className="h-4 w-4 text-primary" />
+            <h2 className="font-semibold">Fontes Personalizadas (EPUB)</h2>
+          </div>
+          <div className="space-y-2">
+            {(customFonts as Array<{ id: number; name: string; file_url: string }>).map((f) => (
+              <div key={f.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-card border border-border">
+                <span className="text-sm font-medium">{f.name}</span>
+                <button
+                  onClick={() => deleteFontMutation.mutate(f.id)}
+                  className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              value={fontName}
+              onChange={(e) => setFontName(e.target.value)}
+              placeholder="Nome da fonte"
+              className="flex-1 min-w-[140px] px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border text-sm cursor-pointer hover:bg-accent transition-colors">
+              <Upload className="h-3.5 w-3.5" />
+              {fontFile ? fontFile.name : "Escolher .ttf/.otf"}
+              <input
+                type="file"
+                accept=".ttf,.otf,.woff,.woff2"
+                className="hidden"
+                onChange={(e) => setFontFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              onClick={() => fontName && fontFile && uploadFontMutation.mutate({ name: fontName, file: fontFile })}
+              disabled={!fontName || !fontFile || uploadFontMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+            >
+              {uploadFontMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Enviar
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ── Scrobble Errors ───────────────────────────────────────────────── */}
+      {scrobbleErrors.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-red-400" />
+            <h2 className="font-semibold">Erros de Scrobble</h2>
+          </div>
+          <div className="space-y-2">
+            {scrobbleErrors.map((e) => (
+              <div key={e.id} className="flex items-start justify-between gap-3 px-4 py-3 rounded-lg bg-red-500/5 border border-red-500/20">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{e.series_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {e.provider.toUpperCase()} · {new Date(e.attempted_at).toLocaleDateString("pt-BR")}
+                  </p>
+                  <p className="text-xs text-red-400 truncate">{e.error_message}</p>
+                </div>
+                <button
+                  onClick={() => resolveErrorMutation.mutate(e.id)}
+                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-green-400 hover:bg-green-500/10 transition-colors"
+                >
+                  <Check className="h-3 w-3" />
+                  Resolver
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

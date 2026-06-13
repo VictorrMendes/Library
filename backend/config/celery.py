@@ -21,4 +21,8 @@ app.conf.beat_schedule = {
         "task": "apps.library.tasks.cleanup_orphaned_files",
         "schedule": crontab(day_of_week=0, hour=2, minute=0),
     },
+    "retry-scrobble-errors-hourly": {
+        "task": "apps.stats.tasks.retry_scrobble_errors",
+        "schedule": crontab(minute=30),
+    },
 }

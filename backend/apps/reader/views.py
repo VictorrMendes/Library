@@ -7,13 +7,14 @@ import zipfile
 from pathlib import Path
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 import ebooklib
 from ebooklib import epub as epub_lib
 from apps.library.models import Chapter
-from .models import ReadingProgress, Bookmark, Annotation
+from .models import ReadingProgress, ReadingSession, Bookmark, Annotation
 from .serializers import (
     ReadingProgressSerializer,
     UpdateProgressSerializer,
@@ -397,10 +398,49 @@ def update_progress(request):
         progress.total_reads += 1
     progress.save()
 
+    pages_delta = max(0, progress.pages_read - old_pages)
+    _update_reading_session(request.user, chapter, progress.pages_read, pages_delta)
+
     if newly_complete:
         _trigger_scrobble(request.user, chapter)
 
     return Response(ReadingProgressSerializer(progress).data)
+
+
+def _update_reading_session(user, chapter, pages_read, pages_delta):
+    from datetime import timedelta
+    from apps.stats.models import ReadingHistory
+    now = timezone.now()
+    threshold = now - timedelta(minutes=30)
+    session = (
+        ReadingSession.objects
+        .filter(user=user, chapter=chapter, started_at__gte=threshold)
+        .order_by("-started_at")
+        .first()
+    )
+    if session:
+        session.pages_read = pages_read
+        session.ended_at = now
+        session.save(update_fields=["pages_read", "ended_at"])
+    else:
+        ReadingSession.objects.create(
+            user=user,
+            series=chapter.series,
+            chapter=chapter,
+            pages_read=pages_read,
+            ended_at=now,
+        )
+    if pages_delta > 0:
+        today = now.date()
+        hist, _ = ReadingHistory.objects.get_or_create(
+            user=user,
+            series=chapter.series,
+            chapter=chapter,
+            read_at=today,
+            defaults={"pages_read": 0},
+        )
+        hist.pages_read += pages_delta
+        hist.save(update_fields=["pages_read"])
 
 
 def _trigger_scrobble(user, chapter):
@@ -426,9 +466,12 @@ def _trigger_scrobble(user, chapter):
     total_reads = max(progress_entries) if progress_entries else 1
 
     def _do_scrobble():
+        from apps.accounts.models import ScrobbleError
+        import urllib.request
+        import json as _json
+
         if "anilist" in creds and series.anilist_id:
             try:
-                import urllib.request, json as _json
                 mutation = """
                 mutation ($mediaId: Int, $progress: Int) {
                   SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { id }
@@ -448,13 +491,21 @@ def _trigger_scrobble(user, chapter):
                     method="POST",
                 )
                 urllib.request.urlopen(req, timeout=10)
-            except Exception:
-                pass
+            except Exception as exc:
+                ScrobbleError.objects.create(
+                    user=user,
+                    provider="anilist",
+                    series_name=series.name,
+                    anilist_id=series.anilist_id,
+                    error_message=str(exc),
+                )
 
         if "mal" in creds and series.mal_id:
             try:
-                import urllib.request, urllib.parse
-                body = urllib.parse.urlencode({"num_chapters_read": total_reads}).encode()
+                import urllib.parse
+                body = urllib.parse.urlencode(
+                    {"num_chapters_read": total_reads}
+                ).encode()
                 req = urllib.request.Request(
                     f"https://api.myanimelist.net/v2/manga/{series.mal_id}/my_list_status",
                     data=body,
@@ -462,8 +513,14 @@ def _trigger_scrobble(user, chapter):
                     method="PATCH",
                 )
                 urllib.request.urlopen(req, timeout=10)
-            except Exception:
-                pass
+            except Exception as exc:
+                ScrobbleError.objects.create(
+                    user=user,
+                    provider="mal",
+                    series_name=series.name,
+                    mal_id=series.mal_id,
+                    error_message=str(exc),
+                )
 
     threading.Thread(target=_do_scrobble, daemon=True).start()
 

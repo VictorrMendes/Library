@@ -11,4 +11,7 @@ urlpatterns = [
         views.ReadingGoalView.as_view(),
         name="reading-goal-detail",
     ),
+    path("activity/", views.activity_graph, name="activity-graph"),
+    path("heatmap/", views.reading_heatmap, name="reading-heatmap"),
+    path("estimate/<int:series_id>/", views.estimate_completion, name="estimate-completion"),
 ]

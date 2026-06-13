@@ -12,6 +12,7 @@ router.register("tags", views.TagViewSet, basename="tag")
 router.register("people", views.PersonViewSet, basename="person")
 router.register("ratings", views.SeriesRatingViewSet, basename="rating")
 router.register("media-errors", views.MediaErrorViewSet, basename="media-error")
+router.register("fonts", views.EpubFontViewSet, basename="epub-font")
 
 urlpatterns = [
     path("", include(router.urls)),

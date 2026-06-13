@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { BookOpen, TrendingUp, Library, Clock, Calendar, ArrowRight, Flame, Target, Plus, Trash2 } from "lucide-react";
+import { BookOpen, TrendingUp, Library, Clock, Calendar, ArrowRight, Flame, Target, Plus, Trash2, BarChart2, Clock3 } from "lucide-react";
 import { statsApi } from "@/lib/api";
 import type { UserStats } from "@/types";
+
+const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 interface ReadingGoal {
   id: number;
@@ -92,6 +94,19 @@ export default function StatsPage() {
   const queryClient = useQueryClient();
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [goalForm, setGoalForm] = useState({ period: "monthly", metric: "pages", target: "500" });
+
+  const { data: heatmap } = useQuery({
+    queryKey: ["stats", "heatmap"],
+    queryFn: () => statsApi.heatmap().then((r) => r.data as {
+      by_hour: Array<{ hour: number; count: number }>;
+      by_weekday: Array<{ weekday: number; count: number }>;
+    }),
+  });
+
+  const { data: activityData = [] } = useQuery<Array<{ date: string; pages: number }>>({
+    queryKey: ["stats", "activity"],
+    queryFn: () => statsApi.activity(90).then((r) => r.data),
+  });
 
   const { data: goals = [] } = useQuery<ReadingGoal[]>({
     queryKey: ["stats", "goals"],
@@ -281,7 +296,53 @@ export default function StatsPage() {
         )}
       </div>
 
-      {/* Daily chart */}
+      {/* Daily chart — from activity endpoint (90 days) */}
+      {activityData.length > 0 && (() => {
+        const actMap = new Map(activityData.map((d) => [d.date, d.pages]));
+        const last90 = Array.from({ length: 90 }, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - (89 - i));
+          const key = d.toISOString().slice(0, 10);
+          return { date: key, pages: actMap.get(key) ?? 0 };
+        });
+        const maxAct = Math.max(...last90.map((d) => d.pages), 1);
+        return (
+          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Páginas por dia — últimos 90 dias</h2>
+            </div>
+            <div className="flex items-end gap-px h-20">
+              {last90.map((d) => {
+                const pct = d.pages > 0 ? Math.max(4, (d.pages / maxAct) * 100) : 2;
+                return (
+                  <div key={d.date} className="flex-1 group relative">
+                    <div
+                      className="w-full rounded-sm transition-all duration-300"
+                      style={{
+                        height: `${pct}%`,
+                        backgroundColor: d.pages > 0 ? "hsl(var(--primary))" : "hsl(var(--muted))",
+                        opacity: d.pages > 0 ? 0.8 : 0.25,
+                      }}
+                    />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 pointer-events-none">
+                      <div className="bg-popover border border-border rounded px-2 py-1 text-xs whitespace-nowrap shadow">
+                        {d.date.slice(5)}: {d.pages}p
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground">
+              <span>90 dias atrás</span>
+              <span>Hoje</span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Daily chart (from local history — always rendered) */}
       <div className="bg-card border border-border rounded-xl p-5 space-y-4">
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -320,6 +381,82 @@ export default function StatsPage() {
           <span>Hoje</span>
         </div>
       </div>
+
+      {/* Heatmap: reading by hour and weekday */}
+      {heatmap && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Clock3 className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Leitura por hora do dia</h2>
+            </div>
+            <div className="flex items-end gap-px h-16">
+              {Array.from({ length: 24 }, (_, h) => {
+                const found = heatmap.by_hour.find((x) => x.hour === h);
+                const count = found?.count ?? 0;
+                const maxCount = Math.max(...heatmap.by_hour.map((x) => x.count), 1);
+                const pct = count > 0 ? Math.max(6, (count / maxCount) * 100) : 3;
+                return (
+                  <div key={h} className="flex-1 group relative">
+                    <div
+                      className="w-full rounded-sm"
+                      style={{
+                        height: `${pct}%`,
+                        backgroundColor: count > 0 ? "hsl(var(--primary))" : "hsl(var(--muted))",
+                        opacity: count > 0 ? 0.8 : 0.2,
+                      }}
+                    />
+                    {count > 0 && (
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 pointer-events-none">
+                        <div className="bg-popover border border-border rounded px-2 py-1 text-xs whitespace-nowrap shadow">
+                          {h}h: {count}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground">
+              <span>0h</span>
+              <span>12h</span>
+              <span>23h</span>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <BarChart2 className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Leitura por dia da semana</h2>
+            </div>
+            <div className="flex items-end gap-2 h-16">
+              {Array.from({ length: 7 }, (_, i) => {
+                const dbWeekday = i + 1;
+                const found = heatmap.by_weekday.find((x) => x.weekday === dbWeekday);
+                const count = found?.count ?? 0;
+                const maxCount = Math.max(...heatmap.by_weekday.map((x) => x.count), 1);
+                const pct = count > 0 ? Math.max(6, (count / maxCount) * 100) : 3;
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full group relative">
+                      <div
+                        className="w-full rounded-sm"
+                        style={{
+                          height: `${pct * 0.64}px`,
+                          maxHeight: "52px",
+                          backgroundColor: count > 0 ? "hsl(var(--primary))" : "hsl(var(--muted))",
+                          opacity: count > 0 ? 0.8 : 0.2,
+                        }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">{WEEKDAY_LABELS[i]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top series */}

@@ -79,6 +79,7 @@ export const seriesApi = {
     });
   },
   fetchMetadata: (id: number) => api.get(`/library/series/${id}/fetch-metadata/`),
+  anilistMetadata: (id: number) => api.get(`/library/series/${id}/anilist-metadata/`),
   scan: (id: number) => api.post(`/library/series/${id}/scan/`),
   delete: (id: number) => api.delete(`/library/series/${id}/`),
   // Relations
@@ -199,6 +200,9 @@ export const statsApi = {
   createGoal: (data: { period: string; metric: string; target: number }) =>
     api.post("/stats/goals/", data),
   deleteGoal: (id: number) => api.delete(`/stats/goals/${id}/`),
+  activity: (days = 90) => api.get("/stats/activity/", { params: { days } }),
+  heatmap: () => api.get("/stats/heatmap/"),
+  estimate: (seriesId: number) => api.get(`/stats/estimate/${seriesId}/`),
 };
 
 // ─── Ratings ─────────────────────────────────────────────────────────────────
@@ -251,3 +255,47 @@ export const apiKeysApi = {
 // ─── SSE ─────────────────────────────────────────────────────────────────────
 export const sseUrl = () =>
   `${api.defaults.baseURL}/library/scan-stream/`;
+
+// ─── Backup & export ─────────────────────────────────────────────────────────
+export const backupApi = {
+  download: () => api.get("/account/me/backup/", { responseType: "blob" }),
+  exportAnnotations: (series_id?: number) =>
+    api.get("/account/me/annotations/export/", {
+      params: series_id ? { series_id } : {},
+      responseType: "blob",
+    }),
+};
+
+// ─── Version ─────────────────────────────────────────────────────────────────
+export const versionApi = {
+  check: () => api.get("/account/version/"),
+};
+
+// ─── Device Profiles ─────────────────────────────────────────────────────────
+export const deviceProfilesApi = {
+  list: () => api.get("/account/device-profiles/"),
+  save: (data: Record<string, unknown>) =>
+    api.post("/account/device-profiles/", data),
+  delete: (id: number) => api.delete(`/account/device-profiles/${id}/`),
+};
+
+// ─── Scrobble Errors ─────────────────────────────────────────────────────────
+export const scrobbleErrorsApi = {
+  list: () => api.get("/account/scrobble-errors/"),
+  resolve: (id: number) =>
+    api.post(`/account/scrobble-errors/${id}/resolve/`),
+};
+
+// ─── EPUB Fonts ──────────────────────────────────────────────────────────────
+export const fontsApi = {
+  list: () => api.get("/library/fonts/"),
+  upload: (name: string, file: File) => {
+    const fd = new FormData();
+    fd.append("name", name);
+    fd.append("file", file);
+    return api.post("/library/fonts/", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  delete: (id: number) => api.delete(`/library/fonts/${id}/`),
+};

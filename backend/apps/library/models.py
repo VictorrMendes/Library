@@ -372,3 +372,18 @@ class MediaError(models.Model):
 
     def __str__(self):
         return f"Error [{self.error_type}]: {self.file_path}"
+
+
+# ─── EpubFont ─────────────────────────────────────────────────────────────────
+
+class EpubFont(models.Model):
+    name = models.CharField(max_length=100)
+    file = models.FileField(upload_to="epub_fonts/")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "library_epub_font"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name

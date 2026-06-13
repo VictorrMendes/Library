@@ -7,7 +7,7 @@ import Image from "next/image";
 import {
   BookOpen, Clock, ChevronRight, Play, Tag, Trash2, Loader2, Camera, Star,
 } from "lucide-react";
-import { seriesApi, readerApi, collectionsApi, ratingsApi } from "@/lib/api";
+import { seriesApi, readerApi, collectionsApi, ratingsApi, statsApi } from "@/lib/api";
 import { ShelfButton } from "@/components/series/ShelfButton";
 import type { ShelfStatus } from "@/components/series/ShelfButton";
 import { SeriesDetailSkeleton } from "@/components/ui/Skeleton";
@@ -186,6 +186,21 @@ export default function SeriesDetailPage() {
     onSuccess: () => router.push("/dashboard"),
   });
 
+  const { data: estimate } = useQuery({
+    queryKey: ["estimate", id],
+    queryFn: () => statsApi.estimate(Number(id)).then((r) => r.data as {
+      remaining_pages: number; estimated_days: number; avg_pages_per_day: number;
+    }),
+    enabled: !!series,
+  });
+
+  const { data: anilistMeta } = useQuery({
+    queryKey: ["anilist-meta", id],
+    queryFn: () => seriesApi.anilistMetadata(Number(id)).then((r) => r.data),
+    enabled: !!(series?.anilist_id),
+    retry: false,
+  });
+
   const coverMutation = useMutation({
     mutationFn: (file: File) => seriesApi.uploadCover(Number(id), file),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["series", id] }),
@@ -311,6 +326,12 @@ export default function SeriesDetailPage() {
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <Clock className="h-3 w-3" strokeWidth={1.75} />
                   {series.avg_hours_to_read.toFixed(1)}h
+                </span>
+              )}
+              {estimate && estimate.remaining_pages > 0 && (
+                <span className="text-xs text-primary/80 flex items-center gap-1" title="Estimativa de conclusão baseada no seu ritmo de leitura">
+                  <Clock className="h-3 w-3" strokeWidth={1.75} />
+                  ~{estimate.estimated_days}d restantes
                 </span>
               )}
             </div>
@@ -510,6 +531,57 @@ export default function SeriesDetailPage() {
             </p>
           )}
         </div>
+
+        {/* AniList metadata */}
+        {anilistMeta && (
+          <div className="mt-12">
+            <div className="section-rule mb-5">
+              <h2 className="font-classic text-xl font-medium shrink-0">Dados AniList</h2>
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm">
+              {anilistMeta.averageScore != null && (
+                <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-2">
+                  <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+                  <span className="font-medium">{anilistMeta.averageScore / 10}</span>
+                  <span className="text-xs text-muted-foreground">/ 10</span>
+                </div>
+              )}
+              {anilistMeta.popularity != null && (
+                <div className="bg-card border border-border rounded-lg px-4 py-3">
+                  <p className="text-xs text-muted-foreground">Popularidade</p>
+                  <p className="font-medium">{anilistMeta.popularity.toLocaleString("pt-BR")}</p>
+                </div>
+              )}
+              {anilistMeta.favourites != null && (
+                <div className="bg-card border border-border rounded-lg px-4 py-3">
+                  <p className="text-xs text-muted-foreground">Favoritos</p>
+                  <p className="font-medium">{anilistMeta.favourites.toLocaleString("pt-BR")}</p>
+                </div>
+              )}
+            </div>
+            {anilistMeta.recommendations?.nodes?.length > 0 && (
+              <div className="mt-5">
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest mb-3">Recomendados pelo AniList</p>
+                <div className="flex gap-3 flex-wrap">
+                  {anilistMeta.recommendations.nodes.slice(0, 6).map((node: {
+                    mediaRecommendation?: { id: number; title: { romaji: string }; coverImage: { medium: string } }
+                  }) => {
+                    const rec = node.mediaRecommendation;
+                    if (!rec) return null;
+                    return (
+                      <div key={rec.id} className="flex flex-col items-center gap-1 w-20">
+                        {rec.coverImage?.medium && (
+                          <img src={rec.coverImage.medium} alt={rec.title.romaji} className="w-16 h-24 object-cover rounded" />
+                        )}
+                        <p className="text-[10px] text-center text-muted-foreground line-clamp-2">{rec.title.romaji}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Related series */}
         {series.relations && series.relations.length > 0 && (

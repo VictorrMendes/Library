@@ -16,4 +16,11 @@ urlpatterns = [
     path("scrobble-credentials/", views.scrobble_credentials, name="scrobble-credentials"),
     path("scrobble-credentials/<str:provider>/", views.revoke_scrobble_credential, name="revoke-scrobble-credential"),
     path("me/export/", views.export_progress, name="export-progress"),
+    path("me/annotations/export/", views.export_annotations, name="export-annotations"),
+    path("me/backup/", views.backup_database, name="backup-database"),
+    path("version/", views.check_version, name="check-version"),
+    path("device-profiles/", views.device_profiles, name="device-profiles"),
+    path("device-profiles/<int:pk>/", views.delete_device_profile, name="device-profile-delete"),
+    path("scrobble-errors/", views.scrobble_errors, name="scrobble-errors"),
+    path("scrobble-errors/<int:pk>/resolve/", views.resolve_scrobble_error, name="resolve-scrobble-error"),
 ]

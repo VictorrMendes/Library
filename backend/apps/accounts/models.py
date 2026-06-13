@@ -114,3 +114,46 @@ class ApiKey(models.Model):
 
     def __str__(self):
         return f"{self.user.username} — {self.label}"
+
+
+class ScrobbleError(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="scrobble_errors"
+    )
+    provider = models.CharField(max_length=20, choices=ScrobbleProvider.choices)
+    series_name = models.CharField(max_length=500)
+    anilist_id = models.IntegerField(null=True, blank=True)
+    mal_id = models.IntegerField(null=True, blank=True)
+    error_message = models.TextField()
+    attempted_at = models.DateTimeField(auto_now_add=True)
+    retry_count = models.IntegerField(default=0)
+    resolved = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "accounts_scrobble_error"
+        ordering = ["-attempted_at"]
+
+    def __str__(self):
+        return f"{self.user.username} — {self.provider} error @ {self.attempted_at:%Y-%m-%d}"
+
+
+class DeviceProfile(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="device_profiles"
+    )
+    device_name = models.CharField(max_length=100)
+    reading_direction = models.CharField(max_length=20, blank=True)
+    reading_mode = models.CharField(max_length=20, blank=True)
+    scaling = models.CharField(max_length=20, blank=True)
+    book_font_size = models.IntegerField(null=True, blank=True)
+    book_font_family = models.CharField(max_length=100, blank=True)
+    book_line_spacing = models.FloatField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "accounts_device_profile"
+        unique_together = [("user", "device_name")]
+        ordering = ["device_name"]
+
+    def __str__(self):
+        return f"{self.user.username} — {self.device_name}"

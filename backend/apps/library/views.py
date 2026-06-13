@@ -8,7 +8,7 @@ from django.db.models import Subquery, OuterRef, Sum, IntegerField, Value, F
 from django.db.models.functions import Coalesce
 from .models import (
     Library, Series, SeriesRelation, Volume, Chapter,
-    Genre, Tag, Person, SeriesRating, MediaError,
+    Genre, Tag, Person, SeriesRating, MediaError, EpubFont,
 )
 from .serializers import (
     LibrarySerializer,
@@ -292,6 +292,17 @@ class SeriesViewSet(viewsets.ModelViewSet):
             series.cover_image.url
         )})
 
+    @action(detail=True, methods=["get"], url_path="anilist-metadata")
+    def anilist_metadata(self, request, pk=None):
+        series = self.get_object()
+        if not series.anilist_id:
+            return Response({"detail": "Nenhum ID AniList configurado."}, status=400)
+        try:
+            data = _fetch_anilist(series.anilist_id)
+            return Response(data)
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=503)
+
 
 class VolumeViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = VolumeSerializer
@@ -507,3 +518,85 @@ def scan_stream(request):
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
+
+
+# ─── AniList metadata ─────────────────────────────────────────────────────────
+
+def _fetch_anilist(anilist_id):
+    import urllib.request
+    import json as _json
+    query = """
+    query ($id: Int) {
+      Media(id: $id, type: MANGA) {
+        id averageScore meanScore popularity favourites
+        genres
+        tags { name rank }
+        recommendations(perPage: 6) {
+          nodes {
+            mediaRecommendation {
+              id
+              title { romaji english }
+              coverImage { medium }
+            }
+          }
+        }
+        relations {
+          nodes { id type title { romaji } }
+        }
+      }
+    }
+    """
+    payload = _json.dumps({"query": query, "variables": {"id": anilist_id}}).encode()
+    req = urllib.request.Request(
+        "https://graphql.anilist.co",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = _json.loads(resp.read())
+    return data.get("data", {}).get("Media", {})
+
+
+# ─── EpubFont ViewSet ─────────────────────────────────────────────────────────
+
+class EpubFontViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser]
+    queryset = EpubFont.objects.all()
+
+    def get_serializer_class(self):
+        from rest_framework import serializers as drf_serializers
+
+        class EpubFontSerializer(drf_serializers.ModelSerializer):
+            file_url = drf_serializers.SerializerMethodField()
+
+            class Meta:
+                model = EpubFont
+                fields = ["id", "name", "file_url", "created_at"]
+
+            def get_file_url(self, obj):
+                request = self.context.get("request")
+                if obj.file and request:
+                    return request.build_absolute_uri(obj.file.url)
+                return None
+
+        return EpubFontSerializer
+
+    def create(self, request, *args, **kwargs):
+        if not request.user.is_admin:
+            return Response({"detail": "Admin only."}, status=403)
+        name = request.data.get("name", "")
+        file = request.FILES.get("file")
+        if not file or not name:
+            return Response({"detail": "name and file required."}, status=400)
+        ext = file.name.rsplit(".", 1)[-1].lower()
+        if ext not in ("ttf", "otf", "woff", "woff2"):
+            return Response({"detail": "Only ttf/otf/woff/woff2 allowed."}, status=400)
+        font = EpubFont.objects.create(name=name, file=file)
+        return Response({"id": font.id, "name": font.name}, status=201)
+
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_admin:
+            return Response({"detail": "Admin only."}, status=403)
+        return super().destroy(request, *args, **kwargs)
