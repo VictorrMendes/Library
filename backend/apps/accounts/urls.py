@@ -15,4 +15,5 @@ urlpatterns = [
     path("api-keys/<int:pk>/", views.revoke_api_key, name="revoke-api-key"),
     path("scrobble-credentials/", views.scrobble_credentials, name="scrobble-credentials"),
     path("scrobble-credentials/<str:provider>/", views.revoke_scrobble_credential, name="revoke-scrobble-credential"),
+    path("me/export/", views.export_progress, name="export-progress"),
 ]

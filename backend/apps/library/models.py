@@ -171,6 +171,8 @@ class Series(models.Model):
     def __str__(self):
         return self.name
 
+    dominant_color = models.CharField(max_length=7, blank=True)
+
     def save(self, *args, **kwargs):
         if not self.sort_name:
             self.sort_name = self.name
@@ -312,3 +314,61 @@ class MangaFile(models.Model):
 
     def __str__(self):
         return self.file_path
+
+
+# ─── SeriesRating ─────────────────────────────────────────────────────────────
+
+class SeriesRating(models.Model):
+    series = models.ForeignKey(Series, on_delete=models.CASCADE, related_name="ratings")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="series_ratings",
+    )
+    score = models.FloatField()  # 0–10
+    review = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "library_series_rating"
+        unique_together = [("series", "user")]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user} → {self.series} ({self.score})"
+
+
+# ─── MediaError ───────────────────────────────────────────────────────────────
+
+class MediaError(models.Model):
+    class ErrorType(models.TextChoices):
+        CORRUPT = "corrupt", "Arquivo Corrompido"
+        MISSING = "missing", "Arquivo Ausente"
+        UNREADABLE = "unreadable", "Não Legível"
+        OTHER = "other", "Outro"
+
+    file_path = models.TextField()
+    extension = models.CharField(max_length=20, blank=True)
+    error_type = models.CharField(
+        max_length=20,
+        choices=ErrorType.choices,
+        default=ErrorType.OTHER,
+    )
+    details = models.TextField(blank=True)
+    series = models.ForeignKey(
+        Series,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="media_errors",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "library_media_error"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Error [{self.error_type}]: {self.file_path}"

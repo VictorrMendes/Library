@@ -200,3 +200,54 @@ export const statsApi = {
     api.post("/stats/goals/", data),
   deleteGoal: (id: number) => api.delete(`/stats/goals/${id}/`),
 };
+
+// ─── Ratings ─────────────────────────────────────────────────────────────────
+export const ratingsApi = {
+  list: (series_id: number) =>
+    api.get("/library/ratings/", { params: { series_id } }),
+  create: (data: { series_id: number; score: number; review?: string }) =>
+    api.post("/library/ratings/", data),
+  update: (id: number, data: { score: number; review?: string }) =>
+    api.patch(`/library/ratings/${id}/`, data),
+  delete: (id: number) => api.delete(`/library/ratings/${id}/`),
+};
+
+// ─── People ──────────────────────────────────────────────────────────────────
+export const peopleApi = {
+  list: (params?: Record<string, unknown>) =>
+    api.get("/library/people/", { params }),
+  get: (id: number) => api.get(`/library/people/${id}/`),
+  series: (id: number) => api.get(`/library/people/${id}/series/`),
+};
+
+// ─── Media Errors ─────────────────────────────────────────────────────────────
+export const mediaErrorsApi = {
+  list: (params?: Record<string, unknown>) =>
+    api.get("/library/media-errors/", { params }),
+  resolve: (id: number) =>
+    api.post(`/library/media-errors/${id}/resolve/`),
+  resolveAll: () => api.post("/library/media-errors/resolve-all/"),
+};
+
+// ─── EPUB TOC ─────────────────────────────────────────────────────────────────
+export const tocApi = {
+  get: (chapterId: number) =>
+    api.get(`/library/chapters/${chapterId}/toc/`),
+};
+
+// ─── Progress export ─────────────────────────────────────────────────────────
+export const progressApi = {
+  export: () =>
+    api.get("/account/me/export/", { responseType: "blob" }),
+};
+
+// ─── API Keys ────────────────────────────────────────────────────────────────
+export const apiKeysApi = {
+  list: () => api.get("/account/api-keys/"),
+  create: (label: string) => api.post("/account/api-keys/", { label }),
+  revoke: (id: number) => api.delete(`/account/api-keys/${id}/`),
+};
+
+// ─── SSE ─────────────────────────────────────────────────────────────────────
+export const sseUrl = () =>
+  `${api.defaults.baseURL}/library/scan-stream/`;

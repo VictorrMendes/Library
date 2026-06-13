@@ -26,6 +26,8 @@ import {
   Globe,
   Layers,
   Hash,
+  Settings,
+  AlertTriangle,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuthStore } from "@/store/auth";
@@ -52,12 +54,14 @@ const mainNav = [
   { href: "/reading-lists", icon: List, label: "Listas de Leitura" },
   { href: "/want-to-read", icon: Heart, label: "Quero Ler" },
   { href: "/stats", icon: BarChart2, label: "Estatísticas" },
+  { href: "/settings", icon: Settings, label: "Configurações" },
 ];
 
 const adminNav = [
   { href: "/admin/libraries", icon: Library, label: "Bibliotecas" },
   { href: "/admin/scanner", icon: ScanLine, label: "Scanner" },
   { href: "/admin/users", icon: Users, label: "Usuários" },
+  { href: "/admin/media-errors", icon: AlertTriangle, label: "Erros de Mídia" },
 ];
 
 function NavItem({

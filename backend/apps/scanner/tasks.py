@@ -413,6 +413,7 @@ def scan_library(self, library_id):
                         pass
 
                     # Extrair capa do arquivo para a série/volume caso não exista (salva thumbnail)
+                    cover_just_saved = False
                     if not series.cover_image:
                         try:
                             img_bytes, img_ext = _extract_cover_bytes(full_path, ext)
@@ -451,10 +452,18 @@ def scan_library(self, library_id):
                                         # fallback: salva original no MEDIA
                                         series_filename = f"{series.id}_cover{img_ext or '.jpg'}"
                                         series.cover_image.save(series_filename, ContentFile(img_bytes), save=True)
+                                    cover_just_saved = True
                                 except Exception:
                                     # fallback simples
                                     filename = f"{series.id}_cover{img_ext or '.jpg'}"
                                     series.cover_image.save(filename, ContentFile(img_bytes), save=True)
+                                    cover_just_saved = True
+                        except Exception:
+                            pass
+                    if cover_just_saved:
+                        try:
+                            from apps.library.tasks import extract_dominant_color
+                            extract_dominant_color.delay(series.id)
                         except Exception:
                             pass
                     volume, _ = Volume.objects.get_or_create(
@@ -474,15 +483,30 @@ def scan_library(self, library_id):
                         defaults={"title": chapter_range},
                     )
                     pages = count_pages(full_path, fmt)
-                    MangaFile.objects.create(
-                        chapter=chapter,
-                        file_path=full_path,
-                        format=fmt,
-                        pages=pages,
-                        bytes=os.path.getsize(full_path),
-                        extension=ext,
-                        last_modified=datetime.fromtimestamp(os.path.getmtime(full_path), tz=dt_timezone.utc),
-                    )
+                    try:
+                        MangaFile.objects.create(
+                            chapter=chapter,
+                            file_path=full_path,
+                            format=fmt,
+                            pages=pages,
+                            bytes=os.path.getsize(full_path),
+                            extension=ext,
+                            last_modified=datetime.fromtimestamp(
+                                os.path.getmtime(full_path), tz=dt_timezone.utc
+                            ),
+                        )
+                    except Exception as file_exc:
+                        from apps.library.models import MediaError
+                        MediaError.objects.get_or_create(
+                            file_path=full_path,
+                            defaults={
+                                "extension": ext,
+                                "error_type": "unreadable",
+                                "details": str(file_exc),
+                                "series": series,
+                            },
+                        )
+                        continue
                     chapter.pages = max(chapter.pages, pages)
                     chapter.save(update_fields=["pages"])
                     files_added += 1

@@ -5,10 +5,10 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, X, Maximize2, Minimize2, Globe, Settings,
-  Bookmark, BookmarkPlus, Trash2,
+  Bookmark, BookmarkPlus, Trash2, List,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { readerApi, authApi } from "@/lib/api";
+import { readerApi, authApi, tocApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useTranslatorStore } from "@/store/translator";
 import { clsx } from "clsx";
@@ -61,6 +61,7 @@ function ReaderContent() {
   const [pdfNumPages, setPdfNumPages] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  const [showToc, setShowToc] = useState(false);
   const [editingPage, setEditingPage] = useState(false);
   const [inputPage, setInputPage] = useState("");
   const [fontSize, setFontSize] = useState(user?.book_font_size ?? 16);
@@ -86,6 +87,12 @@ function ReaderContent() {
         chapter_id: Number(chapterId),
         pages_read: page + 1,
       }),
+  });
+
+  const { data: toc = [] } = useQuery<Array<{ label: string; src: string; order: number }>>({
+    queryKey: ["toc", chapterId],
+    queryFn: () => tocApi.get(Number(chapterId)).then((r) => r.data.toc),
+    enabled: format === "epub",
   });
 
   const { data: bookmarks = [], refetch: refetchBookmarks } = useQuery<BookmarkEntry[]>({
@@ -327,7 +334,7 @@ function ReaderContent() {
             <Globe className="h-5 w-5" />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); setShowBookmarks((v) => !v); setShowSettings(false); }}
+            onClick={(e) => { e.stopPropagation(); setShowBookmarks((v) => !v); setShowSettings(false); setShowToc(false); }}
             title="Marcadores"
             className={clsx("p-2 transition-colors relative", showBookmarks ? "text-primary" : "text-white/70 hover:text-white")}
           >
@@ -336,8 +343,17 @@ function ReaderContent() {
               <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-primary" />
             )}
           </button>
+          {format === "epub" && toc.length > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowToc((v) => !v); setShowBookmarks(false); setShowSettings(false); }}
+              title="Índice"
+              className={clsx("p-2 transition-colors", showToc ? "text-primary" : "text-white/70 hover:text-white")}
+            >
+              <List className="h-5 w-5" />
+            </button>
+          )}
           <button
-            onClick={() => setShowSettings((v) => !v)}
+            onClick={() => { setShowSettings((v) => !v); setShowToc(false); }}
             title="Configurações"
             className={clsx("p-2 transition-colors", showSettings ? "text-primary" : "text-white/70 hover:text-white")}
           >
@@ -409,6 +425,28 @@ function ReaderContent() {
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* ── TOC panel ───────────────────────────────────────────────── */}
+      {showToc && toc.length > 0 && (
+        <div
+          className="fixed top-14 right-4 z-50 w-72 bg-black/90 border border-white/10 rounded-xl p-4 space-y-2 backdrop-blur-sm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-sm font-semibold text-white mb-3">Índice</p>
+          <ul className="space-y-0.5 max-h-72 overflow-y-auto pr-1">
+            {toc.map((entry, i) => (
+              <li key={i}>
+                <button
+                  onClick={() => { goTo(entry.order); setShowToc(false); }}
+                  className="w-full text-left text-sm text-white/75 hover:text-white px-2 py-1.5 rounded hover:bg-white/10 transition-colors truncate"
+                >
+                  {entry.label || `Página ${entry.order + 1}`}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Library, Series, SeriesMetadata, SeriesRelation, Volume, Chapter, MangaFile, Genre, Tag, Person
+from .models import Library, Series, SeriesMetadata, SeriesRelation, Volume, Chapter, MangaFile, Genre, Tag, Person, SeriesRating, MediaError
 
 
 class GenreSerializer(serializers.ModelSerializer):
@@ -135,10 +135,42 @@ class SeriesRelationSerializer(serializers.ModelSerializer):
         return None
 
 
+class SeriesRatingSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+
+    class Meta:
+        model = SeriesRating
+        fields = ["id", "series_id", "user_id", "username", "score", "review", "created_at", "updated_at"]
+        read_only_fields = ["id", "user_id", "username", "created_at", "updated_at"]
+
+
+class MediaErrorSerializer(serializers.ModelSerializer):
+    series_name = serializers.CharField(source="series.name", read_only=True)
+
+    class Meta:
+        model = MediaError
+        fields = ["id", "file_path", "extension", "error_type", "details", "series_id", "series_name", "created_at", "resolved"]
+        read_only_fields = ["id", "created_at"]
+
+
+class PersonDetailSerializer(serializers.ModelSerializer):
+    series_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Person
+        fields = ["id", "name", "role", "cover_image", "description", "series_count"]
+
+    def get_series_count(self, obj):
+        return obj.series.count()
+
+
 class SeriesDetailSerializer(serializers.ModelSerializer):
     metadata = SeriesMetadataSerializer(read_only=True)
     volumes = VolumeSerializer(many=True, read_only=True)
     relations = SeriesRelationSerializer(many=True, read_only=True)
+    avg_score = serializers.SerializerMethodField()
+    rating_count = serializers.SerializerMethodField()
+    dominant_color = serializers.CharField(read_only=True)
 
     class Meta:
         model = Series
@@ -146,7 +178,16 @@ class SeriesDetailSerializer(serializers.ModelSerializer):
             "id", "name", "sort_name", "localized_name", "original_name",
             "cover_image", "folder_path", "pages", "word_count",
             "min_hours_to_read", "max_hours_to_read", "avg_hours_to_read",
-            "anilist_id", "mal_id", "dont_match",
+            "anilist_id", "mal_id", "dont_match", "dominant_color",
             "library_id", "metadata", "volumes", "relations",
+            "avg_score", "rating_count",
             "created_at", "last_modified",
         ]
+
+    def get_avg_score(self, obj):
+        from django.db.models import Avg
+        result = obj.ratings.aggregate(avg=Avg("score"))["avg"]
+        return round(result, 1) if result is not None else None
+
+    def get_rating_count(self, obj):
+        return obj.ratings.count()

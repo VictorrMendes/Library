@@ -5,9 +5,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  BookOpen, Clock, ChevronRight, Play, Tag, Trash2, Loader2, Camera,
+  BookOpen, Clock, ChevronRight, Play, Tag, Trash2, Loader2, Camera, Star,
 } from "lucide-react";
-import { seriesApi, readerApi, collectionsApi } from "@/lib/api";
+import { seriesApi, readerApi, collectionsApi, ratingsApi } from "@/lib/api";
 import { ShelfButton } from "@/components/series/ShelfButton";
 import type { ShelfStatus } from "@/components/series/ShelfButton";
 import { SeriesDetailSkeleton } from "@/components/ui/Skeleton";
@@ -104,6 +104,29 @@ export default function SeriesDetailPage() {
   const shelfRemoveMutation = useMutation({
     mutationFn: (itemId: number) => collectionsApi.removeWantToRead(itemId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shelf", id] }),
+  });
+
+  const [ratingScore, setRatingScore] = useState(0);
+  const [ratingHover, setRatingHover] = useState(0);
+  const [ratingReview, setRatingReview] = useState("");
+  const [showRatingForm, setShowRatingForm] = useState(false);
+
+  const { data: ratings = [], refetch: refetchRatings } = useQuery<
+    Array<{ id: number; user_id: number; username: string; score: number; review: string; created_at: string }>
+  >({
+    queryKey: ["ratings", id],
+    queryFn: () => ratingsApi.list(Number(id)).then((r) => r.data.results ?? r.data),
+    enabled: !!series,
+  });
+
+  const submitRatingMutation = useMutation({
+    mutationFn: () =>
+      ratingsApi.create({ series_id: Number(id), score: ratingScore, review: ratingReview }),
+    onSuccess: () => {
+      refetchRatings();
+      queryClient.invalidateQueries({ queryKey: ["series", id] });
+      setShowRatingForm(false);
+    },
   });
 
   const [editMeta, setEditMeta] = useState(false);
@@ -381,6 +404,112 @@ export default function SeriesDetailPage() {
             ))}
           </div>
         )}
+
+        {/* Ratings */}
+        <div className="mt-12">
+          <div className="section-rule mb-5">
+            <h2 className="font-classic text-xl font-medium shrink-0">Avaliações</h2>
+            <div className="flex items-center gap-3 ml-auto">
+              {(series as Record<string, unknown>).avg_score != null && (
+                <span className="flex items-center gap-1 text-sm font-semibold text-amber-400">
+                  <Star className="h-4 w-4 fill-amber-400" />
+                  {((series as Record<string, unknown>).avg_score as number).toFixed(1)}
+                  <span className="text-muted-foreground font-normal text-xs">
+                    ({(series as Record<string, unknown>).rating_count as number})
+                  </span>
+                </span>
+              )}
+              <button
+                onClick={() => setShowRatingForm((v) => !v)}
+                className="text-xs text-primary hover:underline"
+              >
+                Avaliar
+              </button>
+            </div>
+          </div>
+
+          {showRatingForm && (
+            <div className="mb-6 bg-card border border-border rounded-xl p-5 space-y-4">
+              <div className="flex items-center gap-1">
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                  <button
+                    key={n}
+                    onMouseEnter={() => setRatingHover(n)}
+                    onMouseLeave={() => setRatingHover(0)}
+                    onClick={() => setRatingScore(n)}
+                    className="p-0.5"
+                  >
+                    <Star
+                      className={clsx(
+                        "h-5 w-5 transition-colors",
+                        n <= (ratingHover || ratingScore)
+                          ? "fill-amber-400 text-amber-400"
+                          : "text-muted-foreground"
+                      )}
+                    />
+                  </button>
+                ))}
+                {ratingScore > 0 && (
+                  <span className="ml-2 text-sm font-semibold text-amber-400">{ratingScore}/10</span>
+                )}
+              </div>
+              <textarea
+                value={ratingReview}
+                onChange={(e) => setRatingReview(e.target.value)}
+                placeholder="Escreva uma review (opcional)..."
+                rows={3}
+                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setShowRatingForm(false)}
+                  className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-accent transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => submitRatingMutation.mutate()}
+                  disabled={ratingScore === 0 || submitRatingMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+                >
+                  {submitRatingMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Publicar avaliação
+                </button>
+              </div>
+            </div>
+          )}
+
+          {ratings.length > 0 ? (
+            <div className="space-y-3">
+              {ratings.slice(0, 5).map((r) => (
+                <div key={r.id} className="bg-card border border-border/50 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-semibold">
+                        {r.username[0].toUpperCase()}
+                      </div>
+                      <span className="text-sm font-medium">{r.username}</span>
+                    </div>
+                    <span className="flex items-center gap-1 text-sm font-semibold text-amber-400">
+                      <Star className="h-3.5 w-3.5 fill-amber-400" />
+                      {r.score}/10
+                    </span>
+                  </div>
+                  {r.review && (
+                    <p className="text-sm text-muted-foreground leading-relaxed">{r.review}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground/60">
+                    {new Date(r.created_at).toLocaleDateString("pt-BR")}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Nenhuma avaliação ainda. Seja o primeiro a avaliar!
+            </p>
+          )}
+        </div>
 
         {/* Related series */}
         {series.relations && series.relations.length > 0 && (

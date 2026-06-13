@@ -94,6 +94,121 @@
     --input: 301 14% 90%;
     --ring: 298 50% 42%;
   }
+
+  /* ── Midnight blue ────────────────────────────────────── */
+  .midnight {
+    --background: 222 47% 4%;
+    --foreground: 213 31% 91%;
+    --card: 222 47% 7%;
+    --card-foreground: 213 31% 91%;
+    --popover: 222 47% 7%;
+    --popover-foreground: 213 31% 91%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 4%;
+    --secondary: 222 40% 13%;
+    --secondary-foreground: 213 20% 65%;
+    --muted: 222 40% 10%;
+    --muted-foreground: 213 14% 48%;
+    --accent: 222 40% 16%;
+    --accent-foreground: 213 31% 91%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 35% 18%;
+    --input: 222 40% 12%;
+    --ring: 217 91% 60%;
+  }
+
+  /* ── Forest green ─────────────────────────────────────── */
+  .forest {
+    --background: 150 30% 4%;
+    --foreground: 150 20% 89%;
+    --card: 150 28% 7%;
+    --card-foreground: 150 20% 89%;
+    --popover: 150 28% 7%;
+    --popover-foreground: 150 20% 89%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 150 30% 4%;
+    --secondary: 150 22% 13%;
+    --secondary-foreground: 150 14% 65%;
+    --muted: 150 22% 10%;
+    --muted-foreground: 150 10% 48%;
+    --accent: 150 22% 16%;
+    --accent-foreground: 150 20% 89%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 150 20% 18%;
+    --input: 150 22% 12%;
+    --ring: 142 71% 45%;
+  }
+
+  /* ── Ocean teal ───────────────────────────────────────── */
+  .ocean {
+    --background: 190 50% 4%;
+    --foreground: 190 20% 89%;
+    --card: 190 48% 7%;
+    --card-foreground: 190 20% 89%;
+    --popover: 190 48% 7%;
+    --popover-foreground: 190 20% 89%;
+    --primary: 187 85% 53%;
+    --primary-foreground: 190 50% 4%;
+    --secondary: 190 38% 13%;
+    --secondary-foreground: 190 14% 65%;
+    --muted: 190 38% 10%;
+    --muted-foreground: 190 10% 48%;
+    --accent: 190 38% 16%;
+    --accent-foreground: 190 20% 89%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 190 30% 18%;
+    --input: 190 38% 12%;
+    --ring: 187 85% 53%;
+  }
+
+  /* ── Sepia warm ───────────────────────────────────────── */
+  .sepia {
+    --background: 33 40% 96%;
+    --foreground: 33 25% 15%;
+    --card: 33 30% 100%;
+    --card-foreground: 33 25% 15%;
+    --popover: 33 30% 100%;
+    --popover-foreground: 33 25% 15%;
+    --primary: 25 80% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 33 20% 90%;
+    --secondary-foreground: 33 20% 40%;
+    --muted: 33 16% 91%;
+    --muted-foreground: 33 12% 52%;
+    --accent: 33 22% 88%;
+    --accent-foreground: 33 25% 15%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 33 16% 83%;
+    --input: 33 16% 88%;
+    --ring: 25 80% 42%;
+  }
+
+  /* ── Crimson red ──────────────────────────────────────── */
+  .crimson {
+    --background: 345 40% 4%;
+    --foreground: 345 20% 89%;
+    --card: 345 38% 7%;
+    --card-foreground: 345 20% 89%;
+    --popover: 345 38% 7%;
+    --popover-foreground: 345 20% 89%;
+    --primary: 346 84% 55%;
+    --primary-foreground: 345 40% 4%;
+    --secondary: 345 28% 13%;
+    --secondary-foreground: 345 14% 65%;
+    --muted: 345 28% 10%;
+    --muted-foreground: 345 10% 48%;
+    --accent: 345 28% 16%;
+    --accent-foreground: 345 20% 89%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 345 22% 18%;
+    --input: 345 28% 12%;
+    --ring: 346 84% 55%;
+  }
 }
 
 @layer base {

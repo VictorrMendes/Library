@@ -6,7 +6,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django_filters import rest_framework as df
 from django.db.models import Subquery, OuterRef, Sum, IntegerField, Value, F
 from django.db.models.functions import Coalesce
-from .models import Library, Series, SeriesRelation, Volume, Chapter, Genre, Tag, Person
+from .models import (
+    Library, Series, SeriesRelation, Volume, Chapter,
+    Genre, Tag, Person, SeriesRating, MediaError,
+)
 from .serializers import (
     LibrarySerializer,
     SeriesListSerializer,
@@ -18,6 +21,9 @@ from .serializers import (
     GenreSerializer,
     TagSerializer,
     PersonSerializer,
+    PersonDetailSerializer,
+    SeriesRatingSerializer,
+    MediaErrorSerializer,
 )
 
 
@@ -329,7 +335,175 @@ class TagViewSet(viewsets.ReadOnlyModelViewSet):
 
 class PersonViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Person.objects.all()
-    serializer_class = PersonSerializer
     filter_backends = [filters.SearchFilter, DjangoFilterBackend]
     search_fields = ["name"]
     filterset_fields = ["role"]
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return PersonDetailSerializer
+        return PersonSerializer
+
+    @action(detail=True, methods=["get"], url_path="series")
+    def series(self, request, pk=None):
+        person = self.get_object()
+        from .serializers import SeriesListSerializer
+        qs = Series.objects.filter(
+            metadata__people=person
+        ).select_related("metadata").distinct()
+        return Response(SeriesListSerializer(qs, many=True, context={"request": request}).data)
+
+
+class SeriesRatingViewSet(viewsets.ModelViewSet):
+    serializer_class = SeriesRatingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = SeriesRating.objects.select_related("user")
+        series_id = self.request.query_params.get("series_id")
+        if series_id:
+            qs = qs.filter(series_id=series_id)
+        return qs
+
+    def perform_create(self, serializer):
+        series_id = self.request.data.get("series_id")
+        SeriesRating.objects.filter(
+            series_id=series_id, user=self.request.user
+        ).delete()
+        serializer.save(user=self.request.user, series_id=series_id)
+
+    def perform_update(self, serializer):
+        serializer.save()
+
+    def get_object(self):
+        obj = super().get_object()
+        if obj.user != self.request.user and not self.request.user.is_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied
+        return obj
+
+
+class MediaErrorViewSet(viewsets.ModelViewSet):
+    serializer_class = MediaErrorSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ["error_type", "resolved", "series"]
+    search_fields = ["file_path"]
+
+    def get_queryset(self):
+        return MediaError.objects.select_related("series")
+
+    @action(detail=True, methods=["post"], url_path="resolve")
+    def resolve(self, request, pk=None):
+        error = self.get_object()
+        error.resolved = True
+        error.save(update_fields=["resolved"])
+        return Response({"detail": "Marcado como resolvido."})
+
+    @action(detail=False, methods=["post"], url_path="resolve-all")
+    def resolve_all(self, request):
+        MediaError.objects.filter(resolved=False).update(resolved=True)
+        return Response({"detail": "Todos os erros marcados como resolvidos."})
+
+
+def epub_toc(request, chapter_id):
+    """Return EPUB table of contents for a chapter as JSON."""
+    import zipfile
+    import json
+    import xml.etree.ElementTree as ET
+    from django.http import JsonResponse
+    from apps.library.models import Chapter
+
+    try:
+        chapter = Chapter.objects.get(pk=chapter_id)
+    except Chapter.DoesNotExist:
+        return JsonResponse({"error": "Chapter not found"}, status=404)
+
+    epub_file = chapter.files.filter(format="epub").first()
+    if not epub_file:
+        return JsonResponse({"toc": []})
+
+    toc = []
+    try:
+        with zipfile.ZipFile(epub_file.file_path) as zf:
+            names = zf.namelist()
+
+            # Try NCX first (EPUB2)
+            ncx_path = next((n for n in names if n.endswith(".ncx")), None)
+            if ncx_path:
+                ncx = ET.fromstring(zf.read(ncx_path))
+                ns = {"ncx": "http://www.daisy.org/z3986/2005/ncx/"}
+                for nav_point in ncx.findall(".//ncx:navPoint", ns):
+                    label = nav_point.findtext(".//ncx:navLabel/ncx:text", default="", namespaces=ns)
+                    content = nav_point.find("ncx:content", ns)
+                    src = content.get("src", "") if content is not None else ""
+                    order = nav_point.get("playOrder", "0")
+                    toc.append({"label": label.strip(), "src": src, "order": int(order)})
+                toc.sort(key=lambda x: x["order"])
+
+            # Try nav.xhtml (EPUB3)
+            if not toc:
+                nav_path = next(
+                    (n for n in names if "nav" in n.lower() and n.endswith((".xhtml", ".html"))),
+                    None
+                )
+                if nav_path:
+                    nav_html = zf.read(nav_path).decode("utf-8", errors="replace")
+                    import re
+                    items = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>([^<]+)<', nav_html)
+                    toc = [{"label": label.strip(), "src": src, "order": i}
+                           for i, (src, label) in enumerate(items)]
+    except Exception:
+        pass
+
+    return JsonResponse({"toc": toc})
+
+
+def scan_stream(request):
+    """SSE endpoint: streams scan job updates to the client."""
+    import json
+    import time
+    from django.http import StreamingHttpResponse
+    from apps.scanner.models import ScanJob
+
+    def event_generator():
+        seen_ids = set()
+        yield "retry: 5000\n\n"
+        while True:
+            try:
+                jobs = list(
+                    ScanJob.objects.select_related("library")
+                    .order_by("-id")[:20]
+                )
+                for job in reversed(jobs):
+                    if job.id not in seen_ids:
+                        seen_ids.add(job.id)
+                        data = json.dumps({
+                            "id": job.id,
+                            "library_id": job.library_id,
+                            "library_name": job.library.name if job.library else "",
+                            "status": job.status,
+                            "files_added": job.files_added,
+                            "started_at": job.started_at.isoformat() if job.started_at else None,
+                        })
+                        yield f"data: {data}\n\n"
+                    elif job.status in ("completed", "failed"):
+                        data = json.dumps({
+                            "id": job.id,
+                            "library_id": job.library_id,
+                            "library_name": job.library.name if job.library else "",
+                            "status": job.status,
+                            "files_added": job.files_added,
+                        })
+                        yield f"data: {data}\n\n"
+            except Exception:
+                pass
+            time.sleep(4)
+
+    response = StreamingHttpResponse(
+        event_generator(),
+        content_type="text/event-stream",
+    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response

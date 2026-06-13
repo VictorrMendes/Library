@@ -148,3 +148,44 @@ def scrobble_credentials(request):
 def revoke_scrobble_credential(request, provider):
     ScrobbleCredential.objects.filter(user=request.user, provider=provider).update(is_active=False)
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ─── Progress export/import ───────────────────────────────────────────────────
+
+@api_view(["GET"])
+def export_progress(request):
+    from apps.reader.models import ReadingProgress, Bookmark
+    from django.http import JsonResponse
+
+    progress = list(
+        ReadingProgress.objects.filter(user=request.user).values(
+            "series_id", "chapter_id", "pages_read", "updated_at"
+        )
+    )
+    bookmarks = list(
+        Bookmark.objects.filter(user=request.user).values(
+            "chapter_id", "page", "label", "created_at"
+        )
+    )
+
+    # Serialize datetime fields
+    for item in progress:
+        if item.get("updated_at"):
+            item["updated_at"] = item["updated_at"].isoformat()
+    for item in bookmarks:
+        if item.get("created_at"):
+            item["created_at"] = item["created_at"].isoformat()
+
+    payload = {
+        "version": 1,
+        "user": request.user.username,
+        "exported_at": timezone.now().isoformat(),
+        "progress": progress,
+        "bookmarks": bookmarks,
+    }
+
+    response = JsonResponse(payload)
+    response["Content-Disposition"] = (
+        f'attachment; filename="biblioteca_progress_{request.user.username}.json"'
+    )
+    return response

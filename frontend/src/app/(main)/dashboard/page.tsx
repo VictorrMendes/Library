@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock, BookOpen, TrendingUp, Library, Flame, Settings2, Check } from "lucide-react";
+import { Clock, BookOpen, TrendingUp, Library, Flame, Settings2, Check, GripVertical } from "lucide-react";
+import { Reorder } from "framer-motion";
 import { seriesApi, statsApi, authApi } from "@/lib/api";
 import { SeriesCard } from "@/components/series/SeriesCard";
 import { SeriesCardSkeleton } from "@/components/ui/Skeleton";
@@ -35,8 +36,16 @@ export default function DashboardPage() {
   const [showCustomize, setShowCustomize] = useState(false);
   const customizeRef = useRef<HTMLDivElement>(null);
 
+  const defaultOrder = ALL_SECTIONS.map((s) => s.key);
   const activeSections: string[] =
-    user?.dashboard_sections?.length ? user.dashboard_sections : ALL_SECTIONS.map((s) => s.key);
+    user?.dashboard_sections?.length ? user.dashboard_sections : defaultOrder;
+
+  const [sectionOrder, setSectionOrder] = useState<string[]>(activeSections);
+
+  useEffect(() => {
+    setSectionOrder(activeSections);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.dashboard_sections?.join(",")]);
 
   const { mutate: savePrefs } = useMutation({
     mutationFn: (sections: string[]) =>
@@ -48,10 +57,16 @@ export default function DashboardPage() {
   });
 
   function toggleSection(key: string) {
-    const next = activeSections.includes(key)
-      ? activeSections.filter((s) => s !== key)
-      : [...activeSections, key];
+    const next = sectionOrder.includes(key)
+      ? sectionOrder.filter((s) => s !== key)
+      : [...sectionOrder, key];
+    setSectionOrder(next);
     savePrefs(next);
+  }
+
+  function handleReorder(newOrder: string[]) {
+    setSectionOrder(newOrder);
+    savePrefs(newOrder);
   }
 
   // Close dropdown on outside click
@@ -126,23 +141,36 @@ export default function DashboardPage() {
             Personalizar
           </button>
           {showCustomize && (
-            <div className="absolute right-0 top-9 z-50 w-52 bg-card border border-border rounded-xl p-2 shadow-xl space-y-0.5">
-              {ALL_SECTIONS.map(({ key, label }) => {
-                const active = activeSections.includes(key);
-                return (
-                  <button
-                    key={key}
-                    onClick={() => toggleSection(key)}
-                    className={clsx(
-                      "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-                      active ? "text-foreground bg-accent/50" : "text-muted-foreground hover:bg-accent/30"
-                    )}
-                  >
-                    <span>{label}</span>
-                    {active && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
-                  </button>
-                );
-              })}
+            <div className="absolute right-0 top-9 z-50 w-60 bg-card border border-border rounded-xl p-3 shadow-xl space-y-1">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-2 pb-1">
+                Arraste para reordenar
+              </p>
+              <Reorder.Group axis="y" values={sectionOrder} onReorder={handleReorder} className="space-y-0.5">
+                {sectionOrder.map((key) => {
+                  const section = ALL_SECTIONS.find((s) => s.key === key);
+                  if (!section) return null;
+                  const active = sectionOrder.includes(key);
+                  return (
+                    <Reorder.Item
+                      key={key}
+                      value={key}
+                      className={clsx(
+                        "flex items-center gap-2 px-2 py-2 rounded-lg text-sm cursor-grab active:cursor-grabbing transition-colors select-none",
+                        active ? "text-foreground bg-accent/40" : "text-muted-foreground"
+                      )}
+                    >
+                      <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                      <span className="flex-1">{section.label}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleSection(key); }}
+                        className="p-0.5 rounded hover:bg-accent"
+                      >
+                        <Check className={clsx("h-3.5 w-3.5", active ? "text-primary" : "text-transparent")} />
+                      </button>
+                    </Reorder.Item>
+                  );
+                })}
+              </Reorder.Group>
             </div>
           )}
         </div>
@@ -187,39 +215,37 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Continuar lendo */}
-      {activeSections.includes("in_progress") && (
-        <Section title="Continuar Lendo">
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
-            {progressLoading
-              ? [1, 2, 3, 4, 5, 6].map((i) => <SeriesCardSkeleton key={i} />)
-              : inProgress?.map((s) => <SeriesCard key={s.id} series={s} />)}
-          </div>
-        </Section>
-      )}
-
-      {/* Recém completados */}
-      {activeSections.includes("recently_completed") &&
-        (completedLoading || (recentlyCompleted && recentlyCompleted.length > 0)) && (
-        <Section title="Recém Completados">
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
-            {completedLoading
-              ? [1, 2, 3, 4, 5, 6].map((i) => <SeriesCardSkeleton key={i} />)
-              : recentlyCompleted?.map((s) => <SeriesCard key={s.id} series={s} />)}
-          </div>
-        </Section>
-      )}
-
-      {/* Adicionados recentemente */}
-      {activeSections.includes("recently_added") && (
-        <Section title="Adicionados Recentemente">
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
-            {recentLoading
-              ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => <SeriesCardSkeleton key={i} />)
-              : recentSeries?.map((s) => <SeriesCard key={s.id} series={s} />)}
-          </div>
-        </Section>
-      )}
+      {/* Dynamic sections in user-defined order */}
+      {sectionOrder.map((key) => {
+        if (key === "in_progress") return (
+          <Section key="in_progress" title="Continuar Lendo">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
+              {progressLoading
+                ? [1, 2, 3, 4, 5, 6].map((i) => <SeriesCardSkeleton key={i} />)
+                : inProgress?.map((s) => <SeriesCard key={s.id} series={s} />)}
+            </div>
+          </Section>
+        );
+        if (key === "recently_completed" && (completedLoading || (recentlyCompleted && recentlyCompleted.length > 0))) return (
+          <Section key="recently_completed" title="Recém Completados">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
+              {completedLoading
+                ? [1, 2, 3, 4, 5, 6].map((i) => <SeriesCardSkeleton key={i} />)
+                : recentlyCompleted?.map((s) => <SeriesCard key={s.id} series={s} />)}
+            </div>
+          </Section>
+        );
+        if (key === "recently_added") return (
+          <Section key="recently_added" title="Adicionados Recentemente">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
+              {recentLoading
+                ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => <SeriesCardSkeleton key={i} />)
+                : recentSeries?.map((s) => <SeriesCard key={s.id} series={s} />)}
+            </div>
+          </Section>
+        );
+        return null;
+      })}
     </div>
   );
 }
