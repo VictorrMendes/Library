@@ -92,7 +92,7 @@ function ReaderContent() {
   const { data: toc = [] } = useQuery<Array<{ label: string; src: string; order: number }>>({
     queryKey: ["toc", chapterId],
     queryFn: () => tocApi.get(Number(chapterId)).then((r) => r.data.toc),
-    enabled: format === "epub",
+    enabled: chapterData?.format === "epub",
   });
 
   const { data: bookmarks = [], refetch: refetchBookmarks } = useQuery<BookmarkEntry[]>({
