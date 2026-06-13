@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Globe, Minus, X, ArrowLeftRight, Loader2 } from "lucide-react";
+import { Globe, Minus, X, ArrowLeftRight, Loader2, Trash2, BookOpen, Clock } from "lucide-react";
+import { clsx } from "clsx";
 import { useTranslatorStore } from "@/store/translator";
 import { lookupWord } from "@/lib/translator";
 import type { Direction } from "@/lib/translator";
@@ -10,15 +11,24 @@ function isMobile() {
   return typeof window !== "undefined" && window.innerWidth < 640;
 }
 
+function fmtTime(ts: number) {
+  return new Date(ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+// ── Tab type ──────────────────────────────────────────────────────────────────
+type Tab = "translate" | "history";
+
 export function TranslatorCard() {
   const {
-    isOpen, isMinimized, position, direction, result,
+    isOpen, isMinimized, position, direction, result, history,
     setOpen, setMinimized, setPosition, setDirection, setResult,
+    addToHistory, clearHistory,
   } = useTranslatorStore();
 
   const [word, setWord] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [tab, setTab] = useState<Tab>("translate");
 
   // Capture text selection (mouse + touch)
   useEffect(() => {
@@ -26,6 +36,7 @@ export function TranslatorCard() {
       const sel = window.getSelection()?.toString().trim();
       if (sel && sel.length > 0 && sel.length < 200) {
         setWord(sel);
+        setTab("translate");
         if (!isOpen) setOpen(true);
       }
     };
@@ -42,7 +53,7 @@ export function TranslatorCard() {
     if (isOpen && !isMobile() && position.x === 0 && position.y === 0) {
       setPosition({
         x: Math.max(16, window.innerWidth - 340),
-        y: Math.max(16, window.innerHeight - 500),
+        y: Math.max(16, window.innerHeight - 560),
       });
     }
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -78,7 +89,7 @@ export function TranslatorCard() {
     };
   }, [setPosition]);
 
-  // ── Desktop drag (touch on non-mobile window widths) ─────────────────────
+  // ── Desktop touch drag ────────────────────────────────────────────────────
   const touching = useRef(false);
 
   const onHeaderTouchStart = useCallback(
@@ -110,7 +121,7 @@ export function TranslatorCard() {
     };
   }, [setPosition]);
 
-  // ── Mobile sheet swipe-to-dismiss ─────────────────────────────────────────
+  // ── Mobile swipe-to-dismiss ───────────────────────────────────────────────
   const [sheetY, setSheetY] = useState(0);
   const sheetTouchStartY = useRef<number | null>(null);
 
@@ -141,7 +152,16 @@ export function TranslatorCard() {
     setError("");
     setResult(null);
     try {
-      setResult(await lookupWord(word, direction));
+      const res = await lookupWord(word, direction);
+      setResult(res);
+      addToHistory({
+        word: res.word,
+        direction,
+        translation: res.translation,
+        phonetic: res.phonetic,
+        definition: res.definition,
+        example: res.example,
+      });
     } catch {
       setError("Não foi possível buscar a tradução. Tente novamente.");
     } finally {
@@ -166,16 +186,151 @@ export function TranslatorCard() {
 
   const mobile = isMobile();
 
+  // ── Shared tab bar ────────────────────────────────────────────────────────
+  const TabBar = () => (
+    <div className="flex border-b border-border">
+      {(["translate", "history"] as Tab[]).map((t) => (
+        <button
+          key={t}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => setTab(t)}
+          className={clsx(
+            "flex-1 py-1.5 text-xs font-medium transition-colors",
+            tab === t
+              ? "text-primary border-b-2 border-primary -mb-px"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {t === "translate" ? "Traduzir" : `Análise${history.length > 0 ? ` (${history.length})` : ""}`}
+        </button>
+      ))}
+    </div>
+  );
+
+  // ── Translate panel ───────────────────────────────────────────────────────
+  const TranslatePanel = ({ compact }: { compact?: boolean }) => (
+    <div className={clsx("space-y-3", compact ? "p-3" : "p-4")}>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={word}
+          onChange={(e) => setWord(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleTranslate()}
+          placeholder={direction === "en-pt" ? "English word or phrase..." : "Palavra em português..."}
+          className={clsx(
+            "flex-1 min-w-0 px-3 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary",
+            compact ? "py-2" : "py-2.5"
+          )}
+        />
+        <button
+          onClick={toggleDirection}
+          className={clsx(
+            "rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors shrink-0",
+            compact ? "p-2" : "p-2.5"
+          )}
+        >
+          <ArrowLeftRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <button
+        onClick={handleTranslate}
+        disabled={loading || !word.trim()}
+        className={clsx(
+          "w-full flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 transition-colors hover:bg-primary/90",
+          compact ? "py-2" : "py-2.5"
+        )}
+      >
+        {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando...</> : "Traduzir"}
+      </button>
+
+      {!word.trim() && !loading && (
+        <p className="text-xs text-muted-foreground text-center">
+          Selecione texto na página ou digite acima
+        </p>
+      )}
+
+      {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+      {result && !error && <TranslationResult result={result} direction={direction} />}
+    </div>
+  );
+
+  // ── History / Analysis panel ──────────────────────────────────────────────
+  const HistoryPanel = ({ maxH }: { maxH: string }) => (
+    <div className="flex flex-col">
+      {history.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 gap-2 text-center px-4">
+          <BookOpen className="h-7 w-7 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground">
+            Nenhuma palavra traduzida ainda.<br />Selecione texto na página ou use a aba Traduzir.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+            <span className="text-xs text-muted-foreground">{history.length} palavra{history.length !== 1 ? "s" : ""}</span>
+            <button
+              onClick={clearHistory}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-red-400 transition-colors"
+            >
+              <Trash2 className="h-3 w-3" />
+              Limpar
+            </button>
+          </div>
+          <div className={clsx("overflow-y-auto divide-y divide-border", maxH)}>
+            {history.map((entry) => (
+              <div
+                key={entry.id}
+                className="px-3 py-2.5 hover:bg-muted/30 transition-colors cursor-pointer group"
+                onClick={() => {
+                  setWord(entry.word);
+                  setDirection(entry.direction);
+                  setTab("translate");
+                }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="text-sm font-medium text-foreground">{entry.word}</span>
+                      {entry.phonetic && (
+                        <span className="text-[10px] text-muted-foreground">{entry.phonetic}</span>
+                      )}
+                      <span className="text-[10px] px-1 rounded bg-primary/10 text-primary font-medium">
+                        {entry.direction === "en-pt" ? "EN→PT" : "PT→EN"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-primary font-medium mt-0.5 truncate">{entry.translation}</p>
+                    {entry.definition && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{entry.definition}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 mt-0.5">
+                    <Clock className="h-2.5 w-2.5" />
+                    {fmtTime(entry.timestamp)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   // ── Mobile bottom sheet ───────────────────────────────────────────────────
   if (mobile) {
     return (
       <div
-        className="fixed bottom-0 left-0 right-0 z-[200] bg-card border-t border-border rounded-t-2xl shadow-2xl shadow-black/60 overflow-hidden"
-        style={{ transform: `translateY(${sheetY}px)`, transition: sheetY === 0 ? "transform 0.2s ease" : "none" }}
+        className="fixed bottom-0 left-0 right-0 z-[200] bg-card border-t border-border rounded-t-2xl shadow-2xl shadow-black/60 flex flex-col"
+        style={{
+          transform: `translateY(${sheetY}px)`,
+          transition: sheetY === 0 ? "transform 0.2s ease" : "none",
+          maxHeight: "85dvh",
+        }}
       >
-        {/* Drag handle — swipe down to dismiss */}
+        {/* Drag handle */}
         <div
-          className="flex flex-col cursor-grab active:cursor-grabbing"
+          className="flex flex-col cursor-grab active:cursor-grabbing shrink-0"
           onTouchStart={onHandleTouchStart}
           onTouchMove={onHandleTouchMove}
           onTouchEnd={onHandleTouchEnd}
@@ -197,40 +352,15 @@ export function TranslatorCard() {
           </div>
         </div>
 
-        <div className="p-4 space-y-3 pb-safe">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={word}
-              onChange={(e) => setWord(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleTranslate()}
-              placeholder={direction === "en-pt" ? "English word or phrase..." : "Palavra em português..."}
-              className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <button
-              onClick={toggleDirection}
-              className="p-2.5 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors shrink-0"
-            >
-              <ArrowLeftRight className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="shrink-0">
+          <TabBar />
+        </div>
 
-          <button
-            onClick={handleTranslate}
-            disabled={loading || !word.trim()}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 transition-colors"
-          >
-            {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando...</> : "Traduzir"}
-          </button>
-
-          {!word.trim() && !loading && (
-            <p className="text-xs text-muted-foreground text-center">
-              Selecione um texto na página ou digite acima para traduzir
-            </p>
-          )}
-
-          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
-          {result && !error && <TranslationResult result={result} direction={direction} />}
+        <div className="flex-1 overflow-hidden">
+          {tab === "translate"
+            ? <TranslatePanel />
+            : <HistoryPanel maxH="max-h-[60dvh]" />
+          }
         </div>
       </div>
     );
@@ -240,19 +370,17 @@ export function TranslatorCard() {
   return (
     <div
       style={{ left: position.x, top: position.y }}
-      className="fixed z-[200] w-80 bg-card border border-border rounded-xl shadow-2xl shadow-black/50 overflow-hidden"
+      className="fixed z-[200] w-80 bg-card border border-border rounded-xl shadow-2xl shadow-black/50 overflow-hidden flex flex-col"
     >
+      {/* Header (draggable) */}
       <div
         onMouseDown={onHeaderMouseDown}
         onTouchStart={onHeaderTouchStart}
-        className="flex items-center justify-between px-3 py-2.5 bg-primary/5 border-b border-border cursor-grab active:cursor-grabbing select-none"
+        className="flex items-center justify-between px-3 py-2.5 bg-primary/5 border-b border-border cursor-grab active:cursor-grabbing select-none shrink-0"
       >
         <div className="flex items-center gap-2">
           <Globe className="h-4 w-4 text-primary shrink-0" />
           <span className="text-sm font-semibold">Tradutor</span>
-          <span className="text-xs text-muted-foreground">
-            {direction === "en-pt" ? "EN → PT" : "PT → EN"}
-          </span>
         </div>
         <div className="flex items-center gap-0.5">
           <button
@@ -273,40 +401,16 @@ export function TranslatorCard() {
       </div>
 
       {!isMinimized && (
-        <div className="p-3 space-y-3">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={word}
-              onChange={(e) => setWord(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleTranslate()}
-              placeholder={direction === "en-pt" ? "English word or phrase..." : "Palavra em português..."}
-              className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-            />
-            <button
-              onClick={toggleDirection}
-              className="p-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors shrink-0"
-            >
-              <ArrowLeftRight className="h-4 w-4" />
-            </button>
+        <div className="flex flex-col" style={{ maxHeight: "calc(100vh - 120px)" }}>
+          <div className="shrink-0">
+            <TabBar />
           </div>
-
-          <button
-            onClick={handleTranslate}
-            disabled={loading || !word.trim()}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando...</> : "Traduzir"}
-          </button>
-
-          {!word.trim() && !loading && (
-            <p className="text-xs text-muted-foreground text-center">
-              Selecione texto na página ou digite acima
-            </p>
-          )}
-
-          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
-          {result && !error && <TranslationResult result={result} direction={direction} />}
+          <div className="flex-1 overflow-hidden">
+            {tab === "translate"
+              ? <TranslatePanel compact />
+              : <HistoryPanel maxH="max-h-[400px]" />
+            }
+          </div>
         </div>
       )}
     </div>
