@@ -37,7 +37,7 @@ class IsAdminOrReadOnly(permissions.BasePermission):
 
 class LibraryViewSet(viewsets.ModelViewSet):
     serializer_class = LibrarySerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return Library.objects.all()

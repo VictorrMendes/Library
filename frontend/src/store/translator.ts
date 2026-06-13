@@ -29,7 +29,7 @@ export const useTranslatorStore = create<TranslatorState>()(
       position: { x: 0, y: 0 },
       direction: "en-pt" as Direction,
       result: null,
-      toggle: () => set((s) => ({ isOpen: !s.isOpen })),
+      toggle: () => set((s) => ({ isOpen: !s.isOpen, isMinimized: false })),
       setOpen: (v) => set({ isOpen: v }),
       setMinimized: (v) => set({ isMinimized: v }),
       setPosition: (p) => set({ position: p }),

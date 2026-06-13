@@ -37,7 +37,7 @@ export function TranslatorCard() {
     };
   }, [isOpen, setOpen]);
 
-  // Initial position — bottom-right on desktop, ignored on mobile
+  // Initial position — bottom-right on desktop
   useEffect(() => {
     if (isOpen && !isMobile() && position.x === 0 && position.y === 0) {
       setPosition({
@@ -47,7 +47,7 @@ export function TranslatorCard() {
     }
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Drag (desktop — mouse) ────────────────────────────────────────────────
+  // ── Desktop drag (mouse) ──────────────────────────────────────────────────
   const dragging = useRef(false);
   const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0 });
 
@@ -78,12 +78,12 @@ export function TranslatorCard() {
     };
   }, [setPosition]);
 
-  // ── Drag (mobile — touch) ─────────────────────────────────────────────────
+  // ── Desktop drag (touch on non-mobile window widths) ─────────────────────
   const touching = useRef(false);
 
   const onHeaderTouchStart = useCallback(
     (e: React.TouchEvent) => {
-      if (isMobile()) return; // bottom sheet on mobile — no drag
+      if (isMobile()) return;
       touching.current = true;
       const t = e.touches[0];
       dragStart.current = { mx: t.clientX, my: t.clientY, px: position.x, py: position.y };
@@ -109,6 +109,30 @@ export function TranslatorCard() {
       document.removeEventListener("touchend", onTouchEnd);
     };
   }, [setPosition]);
+
+  // ── Mobile sheet swipe-to-dismiss ─────────────────────────────────────────
+  const [sheetY, setSheetY] = useState(0);
+  const sheetTouchStartY = useRef<number | null>(null);
+
+  const onHandleTouchStart = useCallback((e: React.TouchEvent) => {
+    sheetTouchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const onHandleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (sheetTouchStartY.current === null) return;
+    const delta = e.touches[0].clientY - sheetTouchStartY.current;
+    if (delta > 0) setSheetY(delta);
+  }, []);
+
+  const onHandleTouchEnd = useCallback(() => {
+    if (sheetY > 80) {
+      setOpen(false);
+      setResult(null);
+      setError("");
+    }
+    setSheetY(0);
+    sheetTouchStartY.current = null;
+  }, [sheetY, setOpen, setResult]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const handleTranslate = async () => {
@@ -145,9 +169,17 @@ export function TranslatorCard() {
   // ── Mobile bottom sheet ───────────────────────────────────────────────────
   if (mobile) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 z-[200] bg-card border-t border-border rounded-t-2xl shadow-2xl shadow-black/60 overflow-hidden">
-        {/* Drag indicator + header */}
-        <div className="flex flex-col">
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[200] bg-card border-t border-border rounded-t-2xl shadow-2xl shadow-black/60 overflow-hidden"
+        style={{ transform: `translateY(${sheetY}px)`, transition: sheetY === 0 ? "transform 0.2s ease" : "none" }}
+      >
+        {/* Drag handle — swipe down to dismiss */}
+        <div
+          className="flex flex-col cursor-grab active:cursor-grabbing"
+          onTouchStart={onHandleTouchStart}
+          onTouchMove={onHandleTouchMove}
+          onTouchEnd={onHandleTouchEnd}
+        >
           <div className="flex justify-center pt-2 pb-1">
             <div className="w-10 h-1 rounded-full bg-border" />
           </div>
@@ -186,13 +218,18 @@ export function TranslatorCard() {
           <button
             onClick={handleTranslate}
             disabled={loading || !word.trim()}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 transition-colors"
           >
             {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando...</> : "Traduzir"}
           </button>
 
-          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+          {!word.trim() && !loading && (
+            <p className="text-xs text-muted-foreground text-center">
+              Selecione um texto na página ou digite acima para traduzir
+            </p>
+          )}
 
+          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
           {result && !error && <TranslationResult result={result} direction={direction} />}
         </div>
       </div>
@@ -262,8 +299,13 @@ export function TranslatorCard() {
             {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando...</> : "Traduzir"}
           </button>
 
-          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+          {!word.trim() && !loading && (
+            <p className="text-xs text-muted-foreground text-center">
+              Selecione texto na página ou digite acima
+            </p>
+          )}
 
+          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
           {result && !error && <TranslationResult result={result} direction={direction} />}
         </div>
       )}

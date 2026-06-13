@@ -44,13 +44,14 @@ const LIBRARY_ICONS: Record<string, React.ElementType> = {
 const mainNav = [
   { href: "/dashboard", icon: Home, label: "Dashboard" },
   { href: "/search", icon: Search, label: "Buscar" },
+  { href: "/libraries", icon: Library, label: "Bibliotecas" },
+  { href: "/upload", icon: UploadCloud, label: "Upload" },
   { href: "/genres", icon: Layers, label: "Gêneros" },
   { href: "/tags", icon: Hash, label: "Tags" },
   { href: "/collections", icon: FolderOpen, label: "Coleções" },
   { href: "/reading-lists", icon: List, label: "Listas de Leitura" },
   { href: "/want-to-read", icon: Heart, label: "Quero Ler" },
   { href: "/stats", icon: BarChart2, label: "Estatísticas" },
-  { href: "/upload", icon: UploadCloud, label: "Upload" },
 ];
 
 const adminNav = [
