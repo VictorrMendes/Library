@@ -174,9 +174,14 @@ export default function SeriesDetailPage() {
   }
 
   const handleContinue = async () => {
-    const { data } = await readerApi.continuePoint(Number(id));
-    const startPage = data.pages_read > 1 ? data.pages_read - 1 : 0;
-    router.push(`/reader/${data.chapter_id}?page=${startPage}`);
+    try {
+      const { data } = await readerApi.continuePoint(Number(id));
+      if (!data.chapter_id) return;
+      const startPage = data.pages_read > 1 ? data.pages_read - 1 : 0;
+      router.push(`/reader/${data.chapter_id}?page=${startPage}`);
+    } catch {
+      // series has no chapters yet
+    }
   };
 
   if (isLoading) return <SeriesDetailSkeleton />;

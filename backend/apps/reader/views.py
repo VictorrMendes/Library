@@ -357,9 +357,7 @@ def continue_point(request, series_id):
             volume__series=series
         ).order_by("volume__min_number", "sort_order").first()
         if not first_chapter:
-            return Response(
-                {"detail": "Nenhum capítulo encontrado."}, status=404
-            )
+            return Response({"chapter_id": None, "pages_read": 0})
         return Response({"chapter_id": first_chapter.id, "pages_read": 0})
 
     return Response({
