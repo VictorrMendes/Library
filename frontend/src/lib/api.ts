@@ -24,6 +24,7 @@ api.interceptors.response.use(
           { refresh }
         );
         localStorage.setItem("access_token", data.access);
+        document.cookie = `access_token=${data.access}; path=/; max-age=3600; SameSite=Strict`;
         original.headers.Authorization = `Bearer ${data.access}`;
         return api(original);
       } catch {

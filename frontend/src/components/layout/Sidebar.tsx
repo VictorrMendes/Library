@@ -50,10 +50,10 @@ const mainNav = [
   { href: "/reading-lists", icon: List, label: "Listas de Leitura" },
   { href: "/want-to-read", icon: Heart, label: "Quero Ler" },
   { href: "/stats", icon: BarChart2, label: "Estatísticas" },
+  { href: "/upload", icon: UploadCloud, label: "Upload" },
 ];
 
 const adminNav = [
-  { href: "/admin/upload", icon: UploadCloud, label: "Upload" },
   { href: "/admin/libraries", icon: Library, label: "Bibliotecas" },
   { href: "/admin/scanner", icon: ScanLine, label: "Scanner" },
   { href: "/admin/users", icon: Users, label: "Usuários" },

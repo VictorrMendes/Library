@@ -21,9 +21,23 @@ from .serializers import (
 )
 
 
+class IsAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == "admin"
+
+
+class IsAdminOrReadOnly(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return request.user.role == "admin"
+
+
 class LibraryViewSet(viewsets.ModelViewSet):
     serializer_class = LibrarySerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
     def get_queryset(self):
         return Library.objects.all()
@@ -33,6 +47,11 @@ class LibraryViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def scan(self, request, pk=None):
+        if request.user.role != "admin":
+            return Response(
+                {"detail": "Apenas administradores podem iniciar scans."},
+                status=403,
+            )
         from apps.scanner.tasks import scan_library
         library = self.get_object()
         task = scan_library.delay(library.id)

@@ -6,7 +6,7 @@ from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import generics, permissions, serializers, status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from .models import ScanJob, UploadJob
@@ -72,6 +72,7 @@ ALLOWED_EXTENSIONS = {".cbz", ".cbr", ".cb7", ".zip", ".epub", ".pdf"}
 
 
 @api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
 def upload_file(request):
     from apps.library.models import Library
 
@@ -167,8 +168,12 @@ def upload_file(request):
 
 
 @api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
 def scan_all(request):
-    if not request.user.is_admin:
-        return Response(status=status.HTTP_403_FORBIDDEN)
+    if request.user.role != "admin":
+        return Response(
+            {"detail": "Apenas administradores podem iniciar scans."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     scan_all_libraries.delay()
     return Response({"detail": "Scan de todas as bibliotecas iniciado."})

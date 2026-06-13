@@ -41,14 +41,13 @@ const STATUS_CFG = {
   failed:     { label: "Falhou",       color: "text-red-400 bg-red-500/10",         icon: XCircle,      spin: false },
 };
 
-export default function AdminUploadPage() {
+export default function UploadPage() {
   const [libraryId, setLibraryId] = useState<string>("");
   const [items, setItems] = useState<UploadItem[]>([]);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [noLibraryError, setNoLibraryError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Keep a ref so async callbacks always see current state
   const itemsRef = useRef<UploadItem[]>([]);
   itemsRef.current = items;
 
@@ -68,28 +67,24 @@ export default function AdminUploadPage() {
     }
   }, [libraries, libraryId]);
 
-  // Poll jobs still in "processing" state (fallback for any pending backend tasks)
   useEffect(() => {
     const processing = items.filter((i) => i.status === "processing" && i.jobId);
     if (processing.length === 0) return;
 
     let polls = 0;
-    const MAX_POLLS = 120; // 5 minutes at 2.5s interval
-
     const interval = setInterval(async () => {
       polls++;
-      if (polls > MAX_POLLS) {
+      if (polls > 120) {
         setItems((prev) =>
           prev.map((i) =>
             i.status === "processing"
-              ? { ...i, status: "failed", error: "Tempo esgotado. Verifique os logs do servidor." }
+              ? { ...i, status: "failed", error: "Tempo esgotado." }
               : i
           )
         );
         clearInterval(interval);
         return;
       }
-
       await Promise.all(
         processing.map(async ({ jobId }) => {
           try {
@@ -98,24 +93,15 @@ export default function AdminUploadPage() {
               setItems((prev) =>
                 prev.map((i) =>
                   i.jobId === jobId
-                    ? {
-                        ...i,
-                        status: data.status,
-                        seriesName: data.series_name || undefined,
-                        targetPath: data.target_path || undefined,
-                        error: data.error_message || undefined,
-                      }
+                    ? { ...i, status: data.status, seriesName: data.series_name || undefined, targetPath: data.target_path || undefined, error: data.error_message || undefined }
                     : i
                 )
               );
             }
-          } catch {
-            // ignore transient poll errors
-          }
+          } catch { /* ignore transient poll errors */ }
         })
       );
     }, 2500);
-
     return () => clearInterval(interval);
   }, [items]);
 
@@ -127,13 +113,7 @@ export default function AdminUploadPage() {
     if (valid.length === 0) return;
     setItems((prev) => [
       ...prev,
-      ...valid.map((f) => ({
-        uid: crypto.randomUUID(),
-        file: f,
-        jobId: null,
-        uploadPct: 0,
-        status: "queued" as const,
-      })),
+      ...valid.map((f) => ({ uid: crypto.randomUUID(), file: f, jobId: null, uploadPct: 0, status: "queued" as const })),
     ]);
   }
 
@@ -147,57 +127,31 @@ export default function AdminUploadPage() {
     setNoLibraryError(false);
     setUploading(true);
 
-    // Read current items from ref so we always have the latest state
     const queued = itemsRef.current.filter((i) => i.status === "queued");
-
     for (const item of queued) {
       const formData = new FormData();
       formData.append("file", item.file);
       formData.append("library_id", libraryId);
 
-      setItems((prev) =>
-        prev.map((i) => (i.uid === item.uid ? { ...i, status: "uploading", uploadPct: 0 } : i))
-      );
+      setItems((prev) => prev.map((i) => i.uid === item.uid ? { ...i, status: "uploading", uploadPct: 0 } : i));
 
       try {
         const { data } = await scannerApi.upload(formData, (pct) => {
-          setItems((prev) =>
-            prev.map((i) => (i.uid === item.uid ? { ...i, uploadPct: pct } : i))
-          );
+          setItems((prev) => prev.map((i) => i.uid === item.uid ? { ...i, uploadPct: pct } : i));
         });
-
-        const finalStatus =
-          data.status === "completed" || data.status === "failed"
-            ? data.status
-            : "processing";
-
+        const finalStatus = data.status === "completed" || data.status === "failed" ? data.status : "processing";
         setItems((prev) =>
           prev.map((i) =>
             i.uid === item.uid
-              ? {
-                  ...i,
-                  status: finalStatus,
-                  jobId: data.id,
-                  uploadPct: 100,
-                  seriesName: data.series_name || undefined,
-                  targetPath: data.target_path || undefined,
-                  error: data.error_message || undefined,
-                }
+              ? { ...i, status: finalStatus, jobId: data.id, uploadPct: 100, seriesName: data.series_name || undefined, targetPath: data.target_path || undefined, error: data.error_message || undefined }
               : i
           )
         );
       } catch (err: unknown) {
-        const msg =
-          (err as { response?: { data?: { detail?: string } } })
-            ?.response?.data?.detail ?? "Erro ao enviar arquivo.";
-        setItems((prev) =>
-          prev.map((i) =>
-            i.uid === item.uid ? { ...i, status: "failed", error: msg } : i
-          )
-        );
+        const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao enviar arquivo.";
+        setItems((prev) => prev.map((i) => i.uid === item.uid ? { ...i, status: "failed", error: msg } : i));
       }
     }
-
     setUploading(false);
   }
 
@@ -207,23 +161,17 @@ export default function AdminUploadPage() {
     addFiles(e.dataTransfer.files);
   }
 
-  function removeItem(uid: string) {
-    setItems((prev) => prev.filter((i) => i.uid !== uid));
-  }
-
   const hasQueued = items.some((i) => i.status === "queued");
 
   return (
     <div className="p-6 space-y-6 max-w-screen-lg">
       <div>
-        <h1 className="text-2xl font-bold font-sans">Upload de Arquivos</h1>
+        <h1 className="font-classic text-2xl font-medium tracking-tight">Upload de Arquivos</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Envie CBZ, CBR, EPUB ou PDF. O sistema detecta a série e organiza
-          automaticamente na biblioteca selecionada.
+          Envie CBZ, CBR, EPUB ou PDF. O sistema detecta a série e organiza automaticamente.
         </p>
       </div>
 
-      {/* Library selector */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium shrink-0">Biblioteca de destino:</label>
@@ -237,9 +185,7 @@ export default function AdminUploadPage() {
           >
             {libraries.length === 0
               ? <option value="">— nenhuma biblioteca cadastrada —</option>
-              : libraries.map((lib) => (
-                  <option key={lib.id} value={lib.id}>{lib.name}</option>
-                ))
+              : libraries.map((lib) => <option key={lib.id} value={lib.id}>{lib.name}</option>)
             }
           </select>
         </div>
@@ -247,27 +193,17 @@ export default function AdminUploadPage() {
         {libraries.length === 0 && (
           <p className="text-sm text-yellow-400">
             Nenhuma biblioteca cadastrada.{" "}
-            <a href="/admin/libraries" className="underline hover:text-yellow-300">
-              Crie uma biblioteca primeiro.
-            </a>
+            <a href="/admin/libraries" className="underline hover:text-yellow-300">Crie uma biblioteca primeiro.</a>
           </p>
         )}
-
-        {noLibraryError && libraries.length > 0 && (
-          <p className="text-sm text-red-400">Selecione uma biblioteca de destino.</p>
-        )}
-
         {selectedHasNoFolder && (
           <p className="text-sm text-yellow-400">
-            Esta biblioteca não tem nenhuma pasta configurada. O upload vai falhar.{" "}
-            <a href="/admin/libraries" className="underline hover:text-yellow-300">
-              Configure a pasta em Admin → Bibliotecas.
-            </a>
+            Esta biblioteca não tem pasta configurada.{" "}
+            <a href="/admin/libraries" className="underline hover:text-yellow-300">Configure em Admin → Bibliotecas.</a>
           </p>
         )}
       </div>
 
-      {/* Drop zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
@@ -275,19 +211,13 @@ export default function AdminUploadPage() {
         onClick={() => inputRef.current?.click()}
         className={clsx(
           "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-12 cursor-pointer transition-colors",
-          dragging
-            ? "border-primary bg-primary/5"
-            : "border-border hover:border-primary/40 hover:bg-muted/20"
+          dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/40 hover:bg-muted/20"
         )}
       >
-        <UploadCloud className={clsx(
-          "h-10 w-10 transition-colors",
-          dragging ? "text-primary" : "text-muted-foreground"
-        )} />
+        <UploadCloud className={clsx("h-10 w-10 transition-colors", dragging ? "text-primary" : "text-muted-foreground")} />
         <div className="text-center">
           <p className="text-sm font-medium">
-            Arraste arquivos aqui ou{" "}
-            <span className="text-primary">clique para selecionar</span>
+            Arraste arquivos aqui ou <span className="text-primary">clique para selecionar</span>
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {ALLOWED_EXT.join(", ")} · máx {MAX_SIZE_MB} MB por arquivo
@@ -303,7 +233,6 @@ export default function AdminUploadPage() {
         />
       </div>
 
-      {/* Queue */}
       {items.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -314,14 +243,11 @@ export default function AdminUploadPage() {
                 disabled={uploading || !libraryId || selectedHasNoFolder}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
-                {uploading
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <UploadCloud className="h-4 w-4" />}
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                 Enviar tudo
               </button>
             )}
           </div>
-
           <div className="space-y-2">
             {items.map((item) => {
               const cfg = STATUS_CFG[item.status];
@@ -330,7 +256,6 @@ export default function AdminUploadPage() {
                 <div key={item.uid} className="bg-card border border-border rounded-xl p-4 space-y-2">
                   <div className="flex items-start gap-3">
                     <FileArchive className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{item.file.name}</p>
                       <p className="text-xs text-muted-foreground">
@@ -343,42 +268,24 @@ export default function AdminUploadPage() {
                         )}
                       </p>
                     </div>
-
-                    <span className={clsx(
-                      "inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium shrink-0",
-                      cfg.color
-                    )}>
+                    <span className={clsx("inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium shrink-0", cfg.color)}>
                       <Icon className={clsx("h-3 w-3", cfg.spin && "animate-spin")} />
                       {cfg.label}
                     </span>
-
                     {(item.status === "queued" || item.status === "failed") && (
-                      <button
-                        onClick={() => removeItem(item.uid)}
-                        className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0"
-                      >
+                      <button onClick={() => setItems((p) => p.filter((i) => i.uid !== item.uid))} className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0">
                         <X className="h-4 w-4" />
                       </button>
                     )}
                   </div>
-
                   {item.status === "uploading" && (
                     <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all duration-200"
-                        style={{ width: `${item.uploadPct}%` }}
-                      />
+                      <div className="h-full rounded-full bg-primary transition-all duration-200" style={{ width: `${item.uploadPct}%` }} />
                     </div>
                   )}
-
-                  {item.error && (
-                    <p className="text-xs text-red-400">{item.error}</p>
-                  )}
-
+                  {item.error && <p className="text-xs text-red-400">{item.error}</p>}
                   {item.status === "completed" && item.targetPath && (
-                    <p className="text-xs text-muted-foreground font-mono truncate">
-                      {item.targetPath}
-                    </p>
+                    <p className="text-xs text-muted-foreground font-mono truncate">{item.targetPath}</p>
                   )}
                 </div>
               );
