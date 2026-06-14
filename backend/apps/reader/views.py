@@ -396,6 +396,7 @@ def chapter_book_page(request, chapter_id):
 
     style_block = (
         "<style id='__reader_custom'>"
+        # ── Layout & colour (reader always wins) ─────────────────────────────
         f"html,body{{margin:0!important;padding:0!important;{body_colors}}}"
         f"body{{font-family:{font_family}!important;"
         f"font-size:{font_size}px!important;"
@@ -403,6 +404,33 @@ def chapter_book_page(request, chapter_id):
         "max-width:820px!important;margin:0 auto!important;"
         "padding:1.25rem 1.75rem 4rem!important;"
         "word-break:break-word!important;}}"
+        # ── Typography enforcement ────────────────────────────────────────────
+        # Injected AFTER the EPUB's own CSS so !important overrides any reset.
+        # Ensures readable paragraph spacing and visible heading hierarchy even
+        # for EPUBs that zero-out margins in their own stylesheet.
+        "p{margin-bottom:.8em!important;}"
+        "p:empty{display:none!important;}"
+        "h1{display:block!important;font-size:1.7em!important;"
+        "font-weight:700!important;line-height:1.3!important;"
+        "margin:1em 0 .5em!important;}"
+        "h2{display:block!important;font-size:1.4em!important;"
+        "font-weight:700!important;line-height:1.3!important;"
+        "margin:.9em 0 .4em!important;}"
+        "h3{display:block!important;font-size:1.15em!important;"
+        "font-weight:700!important;line-height:1.3!important;"
+        "margin:.8em 0 .35em!important;}"
+        "h4,h5,h6{display:block!important;font-size:1em!important;"
+        "font-weight:700!important;margin:.7em 0 .3em!important;}"
+        "ul,ol{padding-left:1.5em!important;margin:.5em 0!important;}"
+        "li{margin:.2em 0!important;}"
+        "blockquote{margin:.8em 1.5em!important;padding-left:.8em!important;"
+        "border-left:3px solid rgba(128,128,128,.5)!important;"
+        "font-style:italic;}"
+        "pre{background:rgba(128,128,128,.12)!important;padding:.6em 1em!important;"
+        "overflow-x:auto!important;border-radius:4px!important;"
+        "font-size:.88em!important;}"
+        "code{font-family:'Courier New',monospace!important;font-size:.9em!important;}"
+        # ── Media & links ─────────────────────────────────────────────────────
         f"hr,table{{color:inherit!important;{misc_colors}}}"
         "img{max-width:100%!important;height:auto!important;}"
         "a{color:#7c9cf0!important;}"
