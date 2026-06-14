@@ -248,7 +248,7 @@ export function Sidebar() {
                 className="flex-1 flex items-center gap-3 px-2 py-2 rounded-md text-sm hover:bg-accent transition-colors min-w-0"
               >
                 <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary text-xs font-semibold shrink-0">
-                  {user.username[0].toUpperCase()}
+                  {(user.username?.[0] ?? "?").toUpperCase()}
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="font-medium text-foreground truncate text-xs leading-tight">

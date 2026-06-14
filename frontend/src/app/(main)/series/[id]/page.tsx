@@ -529,7 +529,7 @@ export default function SeriesDetailPage() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-semibold">
-                        {r.username[0].toUpperCase()}
+                        {(r.username?.[0] ?? "?").toUpperCase()}
                       </div>
                       <span className="text-sm font-medium">{r.username}</span>
                     </div>

@@ -94,7 +94,7 @@ export default function AdminUsersPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
                         <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold shrink-0">
-                          {user.username[0].toUpperCase()}
+                          {(user.username?.[0] ?? "?").toUpperCase()}
                         </div>
                         <div>
                           <p className="font-medium">{user.username}</p>
