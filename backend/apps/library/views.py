@@ -616,8 +616,18 @@ def scan_stream(request):
     """SSE endpoint: streams scan job updates to the client."""
     import json
     import time
-    from django.http import StreamingHttpResponse
+    from django.http import StreamingHttpResponse, HttpResponse
+    from rest_framework_simplejwt.tokens import UntypedToken
+    from rest_framework_simplejwt.exceptions import TokenError
     from apps.scanner.models import ScanJob
+
+    token = request.COOKIES.get("access_token")
+    if not token:
+        return HttpResponse(status=401)
+    try:
+        UntypedToken(token)
+    except TokenError:
+        return HttpResponse(status=401)
 
     def event_generator():
         seen_ids = set()

@@ -49,10 +49,8 @@ export function ScanNotifier() {
 
     function connect() {
       if (destroyed) return;
-      const token = localStorage.getItem("access_token");
-      if (!token) return;
 
-      const es = new EventSource(`${sseUrl()}?token=${token}`);
+      const es = new EventSource(sseUrl(), { withCredentials: true });
       esRef.current = es;
 
       es.onmessage = (e) => {
