@@ -274,6 +274,61 @@ def chapter_book_page(request, chapter_id):
         content,
     )
 
+    # ── Reader customisation CSS ─────────────────────────────────────────────
+    try:
+        font_size = max(10, min(40, int(request.GET.get("font_size", 16))))
+    except (ValueError, TypeError):
+        font_size = 16
+    try:
+        line_spacing = max(1.0, min(3.0, float(request.GET.get("line_spacing", 1.6))))
+    except (ValueError, TypeError):
+        line_spacing = 1.6
+
+    font_family_map = {
+        "sans": "system-ui, -apple-system, 'Segoe UI', sans-serif",
+        "serif": "Georgia, 'Times New Roman', Times, serif",
+        "mono": "'Courier New', Courier, Lucida Console, monospace",
+    }
+    font_family = font_family_map.get(
+        request.GET.get("font_family", "sans"), font_family_map["sans"]
+    )
+
+    theme_css_map = {
+        "dark":  ("background:#1a1a1a!important;color:#e4e2f0!important;",
+                  "border-color:#333!important;"),
+        "black": ("background:#000!important;color:#f0f0f0!important;",
+                  "border-color:#222!important;"),
+        "white": ("background:#fff!important;color:#111!important;",
+                  "border-color:#ccc!important;"),
+        "paper": ("background:#f5e6c9!important;color:#3a2e1a!important;",
+                  "border-color:#c8b89a!important;"),
+    }
+    body_colors, misc_colors = theme_css_map.get(
+        request.GET.get("theme", "dark"), theme_css_map["dark"]
+    )
+
+    style_block = (
+        "<style id='__reader_custom'>"
+        f"html,body{{margin:0!important;padding:0!important;{body_colors}}}"
+        f"body{{font-family:{font_family}!important;"
+        f"font-size:{font_size}px!important;"
+        f"line-height:{line_spacing}!important;"
+        "max-width:820px!important;margin:0 auto!important;"
+        "padding:1.25rem 1.75rem 4rem!important;"
+        "word-break:break-word!important;}}"
+        f"hr,table,blockquote{{color:inherit!important;{misc_colors}}}"
+        "img{max-width:100%!important;height:auto!important;}"
+        "a{color:#7c9cf0!important;}"
+        "</style>"
+    )
+
+    if "</head>" in content:
+        content = content.replace("</head>", f"{style_block}</head>", 1)
+    elif "<body" in content:
+        content = re.sub(r"(<body[^>]*>)", r"\1" + style_block, content, count=1)
+    else:
+        content = style_block + content
+
     response = HttpResponse(content, content_type="text/html; charset=utf-8")
     response['X-Frame-Options'] = 'ALLOWALL'
     return response
