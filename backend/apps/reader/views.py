@@ -5,7 +5,7 @@ import posixpath
 import threading
 import zipfile
 from pathlib import Path
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions
@@ -420,6 +420,18 @@ def chapter_book_resource(request, chapter_id):
     return HttpResponse(data, content_type=content_type)
 
 
+def _pdf_range_stream(path, start, length, chunk=65536):
+    with open(path, "rb") as f:
+        f.seek(start)
+        remaining = length
+        while remaining > 0:
+            data = f.read(min(chunk, remaining))
+            if not data:
+                break
+            remaining -= len(data)
+            yield data
+
+
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def chapter_pdf(request, chapter_id):
@@ -435,12 +447,41 @@ def chapter_pdf(request, chapter_id):
             {"detail": f"PDF not found on disk: {manga_file.file_path}"},
             status=404,
         )
+
+    file_path = manga_file.file_path
+    file_size = os.path.getsize(file_path)
+
+    # Support HTTP range requests so PDF.js fetches only what it needs
+    range_header = request.META.get("HTTP_RANGE", "")
+    if range_header:
+        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if m:
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else file_size - 1
+            end = min(end, file_size - 1)
+            if start > end or start >= file_size:
+                resp = HttpResponse(status=416)
+                resp["Content-Range"] = f"bytes */{file_size}"
+                return resp
+            length = end - start + 1
+            resp = StreamingHttpResponse(
+                _pdf_range_stream(file_path, start, length),
+                status=206,
+                content_type="application/pdf",
+            )
+            resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+            resp["Content-Length"] = str(length)
+            resp["Accept-Ranges"] = "bytes"
+            resp["Cache-Control"] = "public, max-age=3600"
+            return resp
+
     response = FileResponse(
-        open(manga_file.file_path, "rb"),
+        open(file_path, "rb"),
         content_type="application/pdf",
     )
-    response["Cache-Control"] = "public, max-age=3600"
+    response["Content-Length"] = str(file_size)
     response["Accept-Ranges"] = "bytes"
+    response["Cache-Control"] = "public, max-age=3600"
     return response
 
 

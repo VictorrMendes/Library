@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+// Placeholder height for unrendered pages (keeps scrollbar accurate)
+const ESTIMATED_PAGE_HEIGHT = 1100;
+// Pages rendered above/below the visible set
+const RENDER_BUFFER = 3;
 
 interface Props {
   pdfUrl: string;
@@ -14,36 +19,64 @@ interface Props {
   onPageChange?: (page: number) => void;
 }
 
-export default function PdfViewer({ pdfUrl, currentPage, onNumPages, onPageChange }: Props) {
+export default function PdfViewer({
+  pdfUrl,
+  currentPage,
+  onNumPages,
+  onPageChange,
+}: Props) {
   const [numPages, setNumPages] = useState(0);
+  const [renderedPages, setRenderedPages] = useState<Set<number>>(
+    new Set([0, 1, 2])
+  );
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const isProgrammaticScroll = useRef(false);
   const lastTrackedPage = useRef(-1);
 
+  const expandRendered = useCallback(
+    (center: number, total: number) => {
+      setRenderedPages((prev) => {
+        const next = new Set(prev);
+        const lo = Math.max(0, center - RENDER_BUFFER);
+        const hi = Math.min(total - 1, center + RENDER_BUFFER + 2);
+        for (let i = lo; i <= hi; i++) next.add(i);
+        return next;
+      });
+    },
+    []
+  );
+
   // Scroll to page when currentPage changes from parent (button / continue reading)
   useEffect(() => {
     if (numPages === 0) return;
+    expandRendered(currentPage, numPages);
     const el = pageRefs.current[currentPage];
     if (!el) return;
     isProgrammaticScroll.current = true;
-    el.scrollIntoView({ behavior: currentPage === 0 ? "instant" : "smooth", block: "start" });
-    const t = setTimeout(() => { isProgrammaticScroll.current = false; }, 1000);
+    el.scrollIntoView({
+      behavior: currentPage === 0 ? "instant" : "smooth",
+      block: "start",
+    });
+    const t = setTimeout(() => {
+      isProgrammaticScroll.current = false;
+    }, 1000);
     return () => clearTimeout(t);
-  }, [currentPage, numPages]);
+  }, [currentPage, numPages, expandRendered]);
 
-  // Initial scroll when PDF finishes loading (restore saved position)
+  // Initial scroll restore (once numPages is known)
   useEffect(() => {
     if (numPages === 0 || currentPage === 0) return;
+    expandRendered(currentPage, numPages);
     const el = pageRefs.current[currentPage];
     if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
-  }, [numPages]); // intentionally omit currentPage
+  }, [numPages]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // IntersectionObserver: tracks which page is most visible as user scrolls
+  // IntersectionObserver: track visible page for progress bar / parent
   useEffect(() => {
     if (numPages === 0 || !onPageChange) return;
     let debounce: ReturnType<typeof setTimeout>;
 
-    const observer = new IntersectionObserver(
+    const scrollObserver = new IntersectionObserver(
       (entries) => {
         if (isProgrammaticScroll.current) return;
         clearTimeout(debounce);
@@ -62,10 +95,43 @@ export default function PdfViewer({ pdfUrl, currentPage, onNumPages, onPageChang
       { threshold: [0.15, 0.4, 0.7] }
     );
 
-    const els = pageRefs.current.slice(0, numPages);
-    els.forEach((el) => { if (el) observer.observe(el); });
-    return () => { observer.disconnect(); clearTimeout(debounce); };
+    pageRefs.current.slice(0, numPages).forEach((el) => {
+      if (el) scrollObserver.observe(el);
+    });
+    return () => {
+      scrollObserver.disconnect();
+      clearTimeout(debounce);
+    };
   }, [numPages, onPageChange]);
+
+  // IntersectionObserver: lazy-render pages as they approach the viewport
+  useEffect(() => {
+    if (numPages === 0) return;
+
+    const renderObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idx = pageRefs.current.indexOf(
+              entry.target as HTMLDivElement
+            );
+            if (idx >= 0) expandRendered(idx, numPages);
+          }
+        });
+      },
+      { rootMargin: "800px" }
+    );
+
+    pageRefs.current.slice(0, numPages).forEach((el) => {
+      if (el) renderObserver.observe(el);
+    });
+    return () => renderObserver.disconnect();
+  }, [numPages, expandRendered]);
+
+  const pageWidth =
+    typeof window !== "undefined"
+      ? Math.min(window.innerWidth - 32, 900)
+      : 900;
 
   return (
     <Document
@@ -73,26 +139,41 @@ export default function PdfViewer({ pdfUrl, currentPage, onNumPages, onPageChang
       onLoadSuccess={({ numPages: n }) => {
         setNumPages(n);
         onNumPages(n);
+        setRenderedPages(new Set([0, 1, 2]));
       }}
-      loading={<div className="text-white/50 text-sm mt-20">Carregando PDF…</div>}
-      error={<div className="text-red-400 text-sm mt-20">Erro ao carregar PDF.</div>}
+      loading={
+        <div className="text-white/50 text-sm mt-20 text-center">
+          Carregando PDF…
+        </div>
+      }
+      error={
+        <div className="text-red-400 text-sm mt-20 text-center">
+          Erro ao carregar PDF.
+        </div>
+      }
     >
       {numPages > 0 &&
         Array.from({ length: numPages }, (_, i) => (
           <div
             key={i}
-            ref={(el) => { pageRefs.current[i] = el; }}
+            ref={(el) => {
+              pageRefs.current[i] = el;
+            }}
+            style={{
+              minHeight: renderedPages.has(i)
+                ? undefined
+                : ESTIMATED_PAGE_HEIGHT,
+            }}
           >
-            <Page
-              pageNumber={i + 1}
-              className="shadow-2xl mb-2"
-              width={Math.min(
-                typeof window !== "undefined" ? window.innerWidth - 32 : 900,
-                900
-              )}
-              renderAnnotationLayer={false}
-              renderTextLayer={false}
-            />
+            {renderedPages.has(i) && (
+              <Page
+                pageNumber={i + 1}
+                className="shadow-2xl mb-2"
+                width={pageWidth}
+                renderAnnotationLayer={false}
+                renderTextLayer={false}
+              />
+            )}
           </div>
         ))}
     </Document>
