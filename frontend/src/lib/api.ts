@@ -11,6 +11,10 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Single in-flight refresh promise — prevents race condition when multiple
+// requests expire simultaneously (each would otherwise refresh independently).
+let refreshPromise: Promise<string> | null = null;
+
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -18,18 +22,27 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
       try {
-        const refresh = localStorage.getItem("refresh_token");
-        const { data } = await axios.post(
-          `${api.defaults.baseURL}/account/token/refresh/`,
-          { refresh }
-        );
-        localStorage.setItem("access_token", data.access);
-        document.cookie = `access_token=${data.access}; path=/; max-age=3600; SameSite=Strict`;
-        original.headers.Authorization = `Bearer ${data.access}`;
+        if (!refreshPromise) {
+          const refresh = localStorage.getItem("refresh_token");
+          refreshPromise = axios
+            .post(`${api.defaults.baseURL}/account/token/refresh/`, { refresh })
+            .then(({ data }) => {
+              localStorage.setItem("access_token", data.access);
+              document.cookie = `access_token=${data.access}; path=/; max-age=3600; SameSite=Strict`;
+              return data.access as string;
+            })
+            .finally(() => {
+              refreshPromise = null;
+            });
+        }
+        const newToken = await refreshPromise;
+        original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       } catch {
+        refreshPromise = null;
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
+        document.cookie = "access_token=; path=/; max-age=0; SameSite=Strict";
         window.location.href = "/login";
       }
     }

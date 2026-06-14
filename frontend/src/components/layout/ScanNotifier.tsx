@@ -43,44 +43,62 @@ export function ScanNotifier() {
   useEffect(() => {
     if (!user) return;
 
-    const token = localStorage.getItem("access_token");
-    const url = `${sseUrl()}?token=${token ?? ""}`;
-    const es = new EventSource(url);
-    esRef.current = es;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    let destroyed = false;
 
-    es.onmessage = (e) => {
-      try {
-        const job: ScanEvent = JSON.parse(e.data);
-        const prev = statusRef.current.get(job.id);
+    function connect() {
+      if (destroyed) return;
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
 
-        if (prev && prev !== job.status) {
-          if (job.status === "completed") {
-            showToast(
-              `Scan de "${job.library_name}" concluído! +${job.files_added} arquivo(s)`,
-              "success"
-            );
-            queryClient.invalidateQueries({ queryKey: ["series"] });
-            queryClient.invalidateQueries({ queryKey: ["libraries"] });
-          } else if (job.status === "failed") {
-            showToast(`Scan de "${job.library_name}" falhou.`, "error");
-          } else if (job.status === "running" && prev === "pending") {
-            showToast(`Scan de "${job.library_name}" iniciado…`, "info");
+      const es = new EventSource(`${sseUrl()}?token=${token}`);
+      esRef.current = es;
+
+      es.onmessage = (e) => {
+        attempts = 0; // reset backoff on successful message
+        try {
+          const job: ScanEvent = JSON.parse(e.data);
+          const prev = statusRef.current.get(job.id);
+
+          if (prev && prev !== job.status) {
+            if (job.status === "completed") {
+              showToast(
+                `Scan de "${job.library_name}" concluído! +${job.files_added} arquivo(s)`,
+                "success"
+              );
+              queryClient.invalidateQueries({ queryKey: ["series"] });
+              queryClient.invalidateQueries({ queryKey: ["libraries"] });
+            } else if (job.status === "failed") {
+              showToast(`Scan de "${job.library_name}" falhou.`, "error");
+            } else if (job.status === "running" && prev === "pending") {
+              showToast(`Scan de "${job.library_name}" iniciado…`, "info");
+            }
           }
+
+          statusRef.current.set(job.id, job.status);
+        } catch {
+          // ignore malformed events
         }
+      };
 
-        statusRef.current.set(job.id, job.status);
-      } catch {
-        // ignore malformed events
-      }
-    };
+      es.onerror = () => {
+        es.close();
+        esRef.current = null;
+        if (destroyed || attempts >= 6) return;
+        // Exponential backoff: 2s, 4s, 8s, 16s, 30s, 30s
+        const delay = Math.min(1000 * 2 ** (attempts + 1), 30_000);
+        attempts++;
+        timeoutId = setTimeout(connect, delay);
+      };
+    }
 
-    es.onerror = () => {
-      es.close();
-      esRef.current = null;
-    };
+    connect();
 
     return () => {
-      es.close();
+      destroyed = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      esRef.current?.close();
       esRef.current = null;
     };
   }, [user, queryClient]);
