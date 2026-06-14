@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { BookOpen, TrendingUp, Library, Clock, Calendar, ArrowRight, Flame, Target, Plus, Trash2, BarChart2, Clock3 } from "lucide-react";
@@ -130,21 +130,43 @@ export default function StatsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["stats", "goals"] }),
   });
 
-  // Group history by date for a simple bar chart (last 30 days)
-  const dailyMap = new Map<string, number>();
-  history.forEach((h) => {
-    const key = h.read_at.slice(0, 10);
-    dailyMap.set(key, (dailyMap.get(key) ?? 0) + h.pages_read);
-  });
+  const [last30, setLast30] = useState<Array<{ date: string; pages: number }>>([]);
+  const [last90, setLast90] = useState<Array<{ date: string; pages: number }> | null>(null);
 
-  const last30 = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (29 - i));
-    const key = d.toISOString().slice(0, 10);
-    return { date: key, pages: dailyMap.get(key) ?? 0 };
-  });
+  useEffect(() => {
+    const map = new Map<string, number>();
+    history.forEach((h) => {
+      const key = h.read_at.slice(0, 10);
+      map.set(key, (map.get(key) ?? 0) + h.pages_read);
+    });
+    setLast30(
+      Array.from({ length: 30 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (29 - i));
+        const key = d.toISOString().slice(0, 10);
+        return { date: key, pages: map.get(key) ?? 0 };
+      })
+    );
+  }, [history]);
+
+  useEffect(() => {
+    if (!activityData.length) {
+      setLast90(null);
+      return;
+    }
+    const actMap = new Map(activityData.map((d) => [d.date, d.pages]));
+    setLast90(
+      Array.from({ length: 90 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (89 - i));
+        const key = d.toISOString().slice(0, 10);
+        return { date: key, pages: actMap.get(key) ?? 0 };
+      })
+    );
+  }, [activityData]);
 
   const maxPages = Math.max(...last30.map((d) => d.pages), 1);
+  const maxAct = last90 ? Math.max(...last90.map((d) => d.pages), 1) : 1;
 
   // Series most read
   const seriesMap = new Map<number, { name: string; pages: number }>();
@@ -297,50 +319,40 @@ export default function StatsPage() {
       </div>
 
       {/* Daily chart — from activity endpoint (90 days) */}
-      {activityData.length > 0 && (() => {
-        const actMap = new Map(activityData.map((d) => [d.date, d.pages]));
-        const last90 = Array.from({ length: 90 }, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - (89 - i));
-          const key = d.toISOString().slice(0, 10);
-          return { date: key, pages: actMap.get(key) ?? 0 };
-        });
-        const maxAct = Math.max(...last90.map((d) => d.pages), 1);
-        return (
-          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Páginas por dia — últimos 90 dias</h2>
-            </div>
-            <div className="flex items-end gap-px h-20">
-              {last90.map((d) => {
-                const pct = d.pages > 0 ? Math.max(4, (d.pages / maxAct) * 100) : 2;
-                return (
-                  <div key={d.date} className="flex-1 group relative">
-                    <div
-                      className="w-full rounded-sm transition-all duration-300"
-                      style={{
-                        height: `${pct}%`,
-                        backgroundColor: d.pages > 0 ? "hsl(var(--primary))" : "hsl(var(--muted))",
-                        opacity: d.pages > 0 ? 0.8 : 0.25,
-                      }}
-                    />
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 pointer-events-none">
-                      <div className="bg-popover border border-border rounded px-2 py-1 text-xs whitespace-nowrap shadow">
-                        {d.date.slice(5)}: {d.pages}p
-                      </div>
+      {last90 && (
+        <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">Páginas por dia — últimos 90 dias</h2>
+          </div>
+          <div className="flex items-end gap-px h-20">
+            {last90.map((d) => {
+              const pct = d.pages > 0 ? Math.max(4, (d.pages / maxAct) * 100) : 2;
+              return (
+                <div key={d.date} className="flex-1 group relative">
+                  <div
+                    className="w-full rounded-sm transition-all duration-300"
+                    style={{
+                      height: `${pct}%`,
+                      backgroundColor: d.pages > 0 ? "hsl(var(--primary))" : "hsl(var(--muted))",
+                      opacity: d.pages > 0 ? 0.8 : 0.25,
+                    }}
+                  />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 pointer-events-none">
+                    <div className="bg-popover border border-border rounded px-2 py-1 text-xs whitespace-nowrap shadow">
+                      {d.date.slice(5)}: {d.pages}p
                     </div>
                   </div>
-                );
-              })}
-            </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground">
-              <span>90 dias atrás</span>
-              <span>Hoje</span>
-            </div>
+                </div>
+              );
+            })}
           </div>
-        );
-      })()}
+          <div className="flex justify-between text-[11px] text-muted-foreground">
+            <span>90 dias atrás</span>
+            <span>Hoje</span>
+          </div>
+        </div>
+      )}
 
       {/* Daily chart (from local history — always rendered) */}
       <div className="bg-card border border-border rounded-xl p-5 space-y-4">
