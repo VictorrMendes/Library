@@ -328,7 +328,38 @@ def chapter_book_page(request, chapter_id):
         content,
     )
 
-    # ── Reader customisation CSS ─────────────────────────────────────────────
+    # ── Typography defaults (injected at the TOP of <head>) ──────────────────
+    # These are fallbacks for EPUBs with minimal or no CSS. Because they are
+    # injected before the EPUB's own <link> stylesheets, the EPUB CSS always
+    # wins in the cascade for any property it actually defines.
+    typography_defaults = (
+        "<style id='__reader_typography'>"
+        "h1{font-size:1.75em;font-weight:700;margin:1.2em 0 .6em;line-height:1.3}"
+        "h2{font-size:1.45em;font-weight:700;margin:1.1em 0 .5em;line-height:1.3}"
+        "h3{font-size:1.2em;font-weight:700;margin:1em 0 .4em;line-height:1.3}"
+        "h4,h5,h6{font-size:1.05em;font-weight:700;"
+        "margin:.8em 0 .3em;line-height:1.3}"
+        "p{margin:0 0 .85em}"
+        "ul,ol{padding-left:1.6em;margin:.5em 0}"
+        "li{margin:.2em 0}"
+        "blockquote{margin:1em 1.5em;font-style:italic;"
+        "border-left:3px solid rgba(128,128,128,.5);padding-left:1em}"
+        "pre{background:rgba(128,128,128,.12);padding:.75em 1em;"
+        "overflow-x:auto;border-radius:4px;font-size:.88em}"
+        "code{font-family:'Courier New',monospace;font-size:.9em}"
+        "table{border-collapse:collapse;width:100%;margin:.75em 0}"
+        "td,th{border:1px solid rgba(128,128,128,.3);padding:.4em .6em}"
+        "th{font-weight:700}"
+        "</style>"
+    )
+    content = re.sub(
+        r"(<head(?:\s[^>]*)?>)",
+        lambda m: m.group(0) + typography_defaults,
+        content, count=1, flags=re.IGNORECASE,
+    )
+
+    # ── Reader customisation CSS (injected at the END of <head>) ─────────────
+    # Colors, font settings, layout — use !important where EPUB CSS must not win.
     try:
         font_size = max(10, min(40, int(request.GET.get("font_size", 16))))
     except (ValueError, TypeError):
@@ -372,7 +403,7 @@ def chapter_book_page(request, chapter_id):
         "max-width:820px!important;margin:0 auto!important;"
         "padding:1.25rem 1.75rem 4rem!important;"
         "word-break:break-word!important;}}"
-        f"hr,table,blockquote{{color:inherit!important;{misc_colors}}}"
+        f"hr,table{{color:inherit!important;{misc_colors}}}"
         "img{max-width:100%!important;height:auto!important;}"
         "a{color:#7c9cf0!important;}"
         "</style>"
@@ -388,7 +419,8 @@ def chapter_book_page(request, chapter_id):
         content = style_block + content
 
     response = HttpResponse(content, content_type="text/html; charset=utf-8")
-    response['X-Frame-Options'] = 'ALLOWALL'
+    response["X-Frame-Options"] = "ALLOWALL"
+    response["Cache-Control"] = "no-store"
     return response
 
 
@@ -417,7 +449,51 @@ def chapter_book_resource(request, chapter_id):
     if not content_type:
         content_type = "application/octet-stream"
 
-    return HttpResponse(data, content_type=content_type)
+    # For CSS files: rewrite url() and @import so fonts/images resolve correctly
+    if content_type == "text/css":
+        resource_base = (
+            f"/api/reader/chapter/{chapter_id}/book-resource/"
+        )
+        css_dir = posixpath.dirname(file_key)
+
+        def _rw_url(m):
+            raw = m.group(1).strip("'\" ")
+            if not raw or raw.startswith(
+                ("http://", "https://", "data:", "#")
+            ):
+                return m.group(0)
+            resolved = posixpath.normpath(
+                posixpath.join(css_dir, raw)
+            ).lstrip("/")
+            if resolved not in resource_map:
+                return m.group(0)
+            return f"url('{resource_base}?file={resolved}')"
+
+        def _rw_import(m):
+            raw = m.group(1).strip("'\" ")
+            if not raw or raw.startswith(("http://", "https://")):
+                return m.group(0)
+            resolved = posixpath.normpath(
+                posixpath.join(css_dir, raw)
+            ).lstrip("/")
+            if resolved not in resource_map:
+                return m.group(0)
+            return f"@import url('{resource_base}?file={resolved}')"
+
+        css_text = data.decode("utf-8", errors="replace")
+        css_text = re.sub(r"url\(([^)]+)\)", _rw_url, css_text)
+        css_text = re.sub(
+            r'@import\s+["\']([^"\']+)["\']', _rw_import, css_text
+        )
+        resp = HttpResponse(
+            css_text, content_type="text/css; charset=utf-8"
+        )
+        resp["Cache-Control"] = "public, max-age=86400"
+        return resp
+
+    resp = HttpResponse(data, content_type=content_type)
+    resp["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 def _pdf_range_stream(path, start, length, chunk=65536):
