@@ -480,6 +480,7 @@ def scan_stream(request):
     def event_generator():
         seen_ids = set()
         yield "retry: 5000\n\n"
+        tick = 0
         while True:
             try:
                 jobs = list(
@@ -507,6 +508,12 @@ def scan_stream(request):
                             "files_added": job.files_added,
                         })
                         yield f"data: {data}\n\n"
+                # SSE comment heartbeat every ~20 iterations (80 s) keeps the
+                # connection alive through Cloudflare and other proxies that
+                # close idle connections after ~100 s.
+                tick += 1
+                if tick % 20 == 0:
+                    yield ": heartbeat\n\n"
             except Exception:
                 pass
             time.sleep(4)
