@@ -336,12 +336,13 @@ function ReaderContent() {
   };
 
   // ── Image style helpers ───────────────────────────────────────────────────
-  const imgStyle: React.CSSProperties = {
+  const imgStyleMap: Record<ScalingMode, React.CSSProperties> = {
     fit_height: { height: "100vh", objectFit: "contain" },
     fit_width:  { width: "100%",   maxHeight: "100vh", objectFit: "contain" },
     fit_screen: { maxHeight: "100vh", maxWidth: "90vw", objectFit: "contain" },
     original:   {},
-  }[scaling];
+  };
+  const imgStyle = imgStyleMap[scaling];
 
   const bgColorMap: Record<string, string> = {
     dark: "#0d0d12", black: "#000000", white: "#f0f0f0", paper: "#f5e6c9",
