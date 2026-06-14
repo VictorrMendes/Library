@@ -31,6 +31,53 @@ from .serializers import (
 _epub_lock = threading.Lock()
 _epub_cache: dict = {}  # {file_path: (mtime, spine_data, resource_map)}
 
+# ─── Archive listing cache ───────────────────────────────────────────────────
+# Caches the sorted page-name list from CBZ/CBR/CB7 archives so we never
+# re-sort on every page request.  Content is NOT stored here — only names.
+
+_archive_lock = threading.Lock()
+_archive_cache: dict = {}  # {file_path: (mtime, [sorted_names])}
+
+
+def _get_archive_listing(file_path: str, ext: str) -> list:
+    """Return the sorted list of page names in an archive, cached by mtime."""
+    try:
+        mtime = os.path.getmtime(file_path)
+    except OSError:
+        raise Http404
+
+    with _archive_lock:
+        cached = _archive_cache.get(file_path)
+        if cached and cached[0] == mtime:
+            return cached[1]
+
+    if ext in (".cbz", ".zip"):
+        with zipfile.ZipFile(file_path) as zf:
+            names = sorted(
+                [n for n in zf.namelist() if not n.endswith("/")],
+                key=lambda x: x.lower(),
+            )
+    elif ext in (".cbr", ".rar"):
+        import rarfile
+        with rarfile.RarFile(file_path) as rf:
+            names = sorted(
+                [n.filename for n in rf.infolist() if not n.isdir()],
+                key=lambda x: x.lower(),
+            )
+    elif ext in (".cb7", ".7z"):
+        import py7zr
+        with py7zr.SevenZipFile(file_path, mode="r") as z7:
+            names = sorted(
+                [info.filename for info in z7.list() if not info.is_directory],
+                key=lambda x: x.lower(),
+            )
+    else:
+        names = []
+
+    with _archive_lock:
+        _archive_cache[file_path] = (mtime, names)
+    return names
+
 
 def _load_epub(file_path):
     """Load EPUB once per process; return (spine_data, resource_map).
@@ -141,6 +188,18 @@ def chapter_images(request, chapter_id):
     })
 
 
+def _image_response(
+    image_data: bytes, filename: str, chapter_id: int, page: int
+) -> HttpResponse:
+    """Build an image HttpResponse with browser-cache headers."""
+    response = HttpResponse(
+        image_data, content_type=_guess_content_type(filename)
+    )
+    response["Cache-Control"] = "public, max-age=86400"
+    response["ETag"] = f'"{chapter_id}-{page}"'
+    return response
+
+
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def chapter_image(request, chapter_id, page):
@@ -155,57 +214,52 @@ def chapter_image(request, chapter_id, page):
 
     try:
         if ext in (".cbz", ".zip"):
+            images = _get_archive_listing(file_path, ext)
+            if page >= len(images):
+                raise Http404
             with zipfile.ZipFile(file_path) as zf:
-                images = sorted(
-                    [n for n in zf.namelist() if not n.endswith("/")],
-                    key=lambda x: x.lower(),
-                )
-                if page >= len(images):
-                    raise Http404
                 image_data = zf.read(images[page])
-                return HttpResponse(
-                    image_data,
-                    content_type=_guess_content_type(images[page]),
-                )
+            return _image_response(
+                image_data, images[page], chapter_id, page
+            )
+
         elif ext in (".cbr", ".rar"):
             try:
                 import rarfile
-                with rarfile.RarFile(file_path) as rf:
-                    images = sorted(
-                        [n.filename for n in rf.infolist() if not n.isdir()],
-                        key=lambda x: x.lower(),
-                    )
-                    if page >= len(images):
-                        raise Http404
-                    with rf.open(images[page]) as f:
-                        image_data = f.read()
-                    return HttpResponse(
-                        image_data,
-                        content_type=_guess_content_type(images[page]),
-                    )
-            except Exception:
-                raise Http404
-        elif ext in (".cb7", ".7z"):
-            import py7zr
-            with py7zr.SevenZipFile(file_path, mode="r") as z7:
-                files = z7.readall()
-                images = sorted(
-                    [n for n in files.keys() if not n.endswith("/")],
-                    key=lambda x: x.lower(),
-                )
+                images = _get_archive_listing(file_path, ext)
                 if page >= len(images):
                     raise Http404
-                bio = files[images[page]]
-                try:
-                    image_data = bio.read()
-                except Exception:
-                    image_data = bio.getvalue()
-                return HttpResponse(
-                    image_data,
-                    content_type=_guess_content_type(images[page]),
-                )
+                with rarfile.RarFile(file_path) as rf:
+                    with rf.open(images[page]) as f:
+                        image_data = f.read()
+                return _image_response(
+                image_data, images[page], chapter_id, page
+            )
+            except Http404:
+                raise
+            except Exception:
+                raise Http404
+
+        elif ext in (".cb7", ".7z"):
+            import py7zr
+            images = _get_archive_listing(file_path, ext)
+            if page >= len(images):
+                raise Http404
+            target = images[page]
+            with py7zr.SevenZipFile(file_path, mode="r") as z7:
+                extracted = z7.read([target])
+            bio = extracted[target]
+            try:
+                image_data = bio.read()
+            except Exception:
+                image_data = bio.getvalue()
+            return _image_response(image_data, target, chapter_id, page)
+
         elif ext in (".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"):
-            return FileResponse(open(file_path, "rb"))
+            response = FileResponse(open(file_path, "rb"))
+            response["Cache-Control"] = "public, max-age=86400"
+            return response
+
     except (KeyError, IndexError):
         raise Http404
 
@@ -280,7 +334,9 @@ def chapter_book_page(request, chapter_id):
     except (ValueError, TypeError):
         font_size = 16
     try:
-        line_spacing = max(1.0, min(3.0, float(request.GET.get("line_spacing", 1.6))))
+        line_spacing = max(
+            1.0, min(3.0, float(request.GET.get("line_spacing", 1.6)))
+        )
     except (ValueError, TypeError):
         line_spacing = 1.6
 
@@ -325,7 +381,9 @@ def chapter_book_page(request, chapter_id):
     if "</head>" in content:
         content = content.replace("</head>", f"{style_block}</head>", 1)
     elif "<body" in content:
-        content = re.sub(r"(<body[^>]*>)", r"\1" + style_block, content, count=1)
+        content = re.sub(
+            r"(<body[^>]*>)", r"\1" + style_block, content, count=1
+        )
     else:
         content = style_block + content
 
@@ -377,10 +435,13 @@ def chapter_pdf(request, chapter_id):
             {"detail": f"PDF not found on disk: {manga_file.file_path}"},
             status=404,
         )
-    return FileResponse(
+    response = FileResponse(
         open(manga_file.file_path, "rb"),
         content_type="application/pdf",
     )
+    response["Cache-Control"] = "public, max-age=3600"
+    response["Accept-Ranges"] = "bytes"
+    return response
 
 
 def _guess_content_type(filename):
