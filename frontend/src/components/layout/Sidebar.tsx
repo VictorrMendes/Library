@@ -96,16 +96,6 @@ export function Sidebar() {
   const { user, isAdmin, logout } = useAuthStore();
   const { isOpen: translatorOpen, toggle: toggleTranslator } = useTranslatorStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [storeReady, setStoreReady] = useState(false);
-
-  useEffect(() => {
-    if (useAuthStore.persist.hasHydrated()) {
-      setStoreReady(true);
-    } else {
-      const unsub = useAuthStore.persist.onFinishHydration(() => setStoreReady(true));
-      return unsub;
-    }
-  }, []);
 
   function handleLogout() {
     logout();
@@ -250,11 +240,7 @@ export function Sidebar() {
         </nav>
 
         {/* Footer */}
-        {!storeReady ? (
-          <div className="px-3 py-3 border-t border-border/60 shrink-0">
-            <div className="h-12 rounded-md bg-muted/30 animate-pulse" />
-          </div>
-        ) : user ? (
+        {user && (
           <div className="px-3 py-3 border-t border-border/60 shrink-0">
             <div className="flex items-center gap-1">
               <Link
@@ -282,7 +268,7 @@ export function Sidebar() {
               </button>
             </div>
           </div>
-        ) : null}
+        )}
       </aside>
     </>
   );

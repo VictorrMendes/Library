@@ -6,24 +6,14 @@ import { useAuthStore } from "@/store/auth";
 import { authApi } from "@/lib/api";
 
 function AuthInit() {
-  const { setUser } = useAuthStore();
+  const { user, setUser } = useAuthStore();
 
   useEffect(() => {
-    const fetchUserIfMissing = () => {
-      if (useAuthStore.getState().user) return;
-      const token = localStorage.getItem("access_token");
-      if (!token) return;
-      authApi.me().then(({ data }) => setUser(data)).catch(() => {});
-    };
-
-    if (useAuthStore.persist.hasHydrated()) {
-      fetchUserIfMissing();
-      return;
-    }
-
-    return useAuthStore.persist.onFinishHydration(fetchUserIfMissing);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (user) return;
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+    authApi.me().then(({ data }) => setUser(data)).catch(() => {});
+  }, [user, setUser]);
 
   return null;
 }
