@@ -92,6 +92,8 @@ export const seriesApi = {
     });
   },
   fetchMetadata: (id: number) => api.get(`/library/series/${id}/fetch-metadata/`),
+  applyMetadata: (id: number, data: Record<string, unknown>) =>
+    api.post(`/library/series/${id}/apply-metadata/`, data),
   anilistMetadata: (id: number) => api.get(`/library/series/${id}/anilist-metadata/`),
   scan: (id: number) => api.post(`/library/series/${id}/scan/`),
   delete: (id: number) => api.delete(`/library/series/${id}/`),

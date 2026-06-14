@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   BookOpen, Clock, ChevronRight, Play, Tag, Trash2, Loader2, Camera, Star,
+  Globe, Users, CheckCircle2, X,
 } from "lucide-react";
 import { seriesApi, readerApi, collectionsApi, ratingsApi, statsApi } from "@/lib/api";
 import { ShelfButton } from "@/components/series/ShelfButton";
@@ -134,6 +135,15 @@ export default function SeriesDetailPage() {
     summary: "", publication_status: "", release_year: "", language: "",
   });
 
+  type FetchedMeta = {
+    summary?: string; language?: string; release_year?: number | null;
+    publication_status?: string; publisher?: string; isbn?: string;
+    authors?: Array<{ name: string; role: string }>; genres?: string[];
+    tags?: string[]; cover_url?: string; anilist_id?: number;
+    anilist_score?: number; anilist_popularity?: number; sources?: string[];
+  };
+  const [fetchedMeta, setFetchedMeta] = useState<FetchedMeta | null>(null);
+
   function openEditMeta() {
     setMetaForm({
       summary: series?.metadata?.summary ?? "",
@@ -161,13 +171,25 @@ export default function SeriesDetailPage() {
   const fetchMetaMutation = useMutation({
     mutationFn: () => seriesApi.fetchMetadata(Number(id)),
     onSuccess: (res) => {
-      const d = res.data;
+      const d = res.data as FetchedMeta;
+      setFetchedMeta(d);
       setMetaForm((f) => ({
         ...f,
         summary: d.summary || f.summary,
         release_year: d.release_year ? String(d.release_year) : f.release_year,
         language: d.language || f.language,
+        publication_status: d.publication_status || f.publication_status,
       }));
+    },
+  });
+
+  const applyMetaMutation = useMutation({
+    mutationFn: () =>
+      seriesApi.applyMetadata(Number(id), fetchedMeta as Record<string, unknown>),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["series", id] });
+      setFetchedMeta(null);
+      setEditMeta(false);
     },
   });
 
@@ -654,89 +676,253 @@ export default function SeriesDetailPage() {
       {editMeta && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setEditMeta(false)} />
-          <div className="relative bg-card border border-border/60 rounded-lg p-6 w-full max-w-md space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h2 className="font-classic text-lg font-medium">Editar metadados</h2>
-              <button
-                onClick={() => fetchMetaMutation.mutate()}
-                disabled={fetchMetaMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-xs font-medium hover:bg-accent transition-colors disabled:opacity-60"
-              >
-                {fetchMetaMutation.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                Buscar online
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
-                  Sinopse
-                </label>
-                <textarea
-                  value={metaForm.summary}
-                  onChange={(e) => setMetaForm((f) => ({ ...f, summary: e.target.value }))}
-                  rows={4}
-                  className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
-                />
+          <div className={clsx(
+            "relative bg-card border border-border/60 rounded-lg shadow-2xl w-full flex flex-col md:flex-row overflow-hidden",
+            fetchedMeta ? "max-w-3xl" : "max-w-md",
+          )}>
+            {/* Left: edit form */}
+            <div className="flex-1 p-6 space-y-4 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="font-classic text-lg font-medium">Editar metadados</h2>
+                <button
+                  onClick={() => fetchMetaMutation.mutate()}
+                  disabled={fetchMetaMutation.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-xs font-medium hover:bg-accent transition-colors disabled:opacity-60 shrink-0"
+                >
+                  {fetchMetaMutation.isPending
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <Globe className="h-3 w-3" />}
+                  Buscar online
+                </button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              {fetchMetaMutation.isError && (
+                <p className="text-xs text-red-400">Erro ao buscar metadados da internet.</p>
+              )}
+
+              <div className="space-y-3">
                 <div>
                   <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
-                    Status
+                    Sinopse
                   </label>
-                  <select
-                    value={metaForm.publication_status}
-                    onChange={(e) => setMetaForm((f) => ({ ...f, publication_status: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  >
-                    <option value="">—</option>
-                    {["ongoing", "completed", "hiatus", "cancelled", "ended"].map((s) => (
-                      <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                    ))}
-                  </select>
+                  <textarea
+                    value={metaForm.summary}
+                    onChange={(e) => setMetaForm((f) => ({ ...f, summary: e.target.value }))}
+                    rows={4}
+                    className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
+                      Status
+                    </label>
+                    <select
+                      value={metaForm.publication_status}
+                      onChange={(e) => setMetaForm((f) => ({ ...f, publication_status: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <option value="">—</option>
+                      {["ongoing", "completed", "hiatus", "cancelled", "ended"].map((s) => (
+                        <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
+                      Ano
+                    </label>
+                    <input
+                      type="number"
+                      value={metaForm.release_year}
+                      onChange={(e) => setMetaForm((f) => ({ ...f, release_year: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
-                    Ano
+                    Idioma
                   </label>
                   <input
-                    type="number"
-                    value={metaForm.release_year}
-                    onChange={(e) => setMetaForm((f) => ({ ...f, release_year: e.target.value }))}
+                    value={metaForm.language}
+                    onChange={(e) => setMetaForm((f) => ({ ...f, language: e.target.value }))}
+                    placeholder="pt, en, ja…"
                     className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1.5 block uppercase tracking-wide">
-                  Idioma
-                </label>
-                <input
-                  value={metaForm.language}
-                  onChange={(e) => setMetaForm((f) => ({ ...f, language: e.target.value }))}
-                  placeholder="pt, en, ja…"
-                  className="w-full px-3 py-2 rounded-md bg-background border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
+
+              {updateMetaMutation.isError && (
+                <p className="text-sm text-red-400">Erro ao salvar. Tente novamente.</p>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => { setEditMeta(false); setFetchedMeta(null); }}
+                  className="px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium hover:bg-accent transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => updateMetaMutation.mutate()}
+                  disabled={updateMetaMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+                >
+                  {updateMetaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Salvar
+                </button>
               </div>
             </div>
-            {updateMetaMutation.isError && (
-              <p className="text-sm text-red-400">Erro ao salvar. Tente novamente.</p>
+
+            {/* Right: fetched metadata preview */}
+            {fetchedMeta && (
+              <div className="md:w-72 shrink-0 border-t md:border-t-0 md:border-l border-border/60 bg-background/50 p-5 space-y-4 overflow-y-auto max-h-[80vh]">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                    Dados online
+                  </p>
+                  <button
+                    onClick={() => setFetchedMeta(null)}
+                    className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {/* Cover thumbnail */}
+                {fetchedMeta.cover_url && (
+                  <div className="flex justify-center">
+                    <img
+                      src={fetchedMeta.cover_url}
+                      alt="Capa online"
+                      className="h-36 rounded-md object-cover shadow-md border border-border/40"
+                    />
+                  </div>
+                )}
+
+                {/* Sources */}
+                {fetchedMeta.sources && fetchedMeta.sources.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {fetchedMeta.sources.map((src) => (
+                      <span key={src} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium border border-primary/20">
+                        <CheckCircle2 className="h-2.5 w-2.5" />
+                        {src}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Authors */}
+                {fetchedMeta.authors && fetchedMeta.authors.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                      <Users className="h-3 w-3" /> Autores
+                    </p>
+                    <div className="space-y-0.5">
+                      {fetchedMeta.authors.map((a, i) => (
+                        <p key={i} className="text-xs text-foreground">
+                          {a.name}
+                          {a.role && <span className="text-muted-foreground ml-1 text-[11px]">({a.role})</span>}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Basic fields */}
+                <div className="space-y-1.5 text-xs">
+                  {fetchedMeta.publisher && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-16 shrink-0">Editora</span>
+                      <span className="text-foreground">{fetchedMeta.publisher}</span>
+                    </div>
+                  )}
+                  {fetchedMeta.publication_status && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-16 shrink-0">Status</span>
+                      <span className="text-foreground">{STATUS_LABELS[fetchedMeta.publication_status] ?? fetchedMeta.publication_status}</span>
+                    </div>
+                  )}
+                  {fetchedMeta.release_year && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-16 shrink-0">Ano</span>
+                      <span className="text-foreground">{fetchedMeta.release_year}</span>
+                    </div>
+                  )}
+                  {fetchedMeta.language && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-16 shrink-0">Idioma</span>
+                      <span className="text-foreground">{fetchedMeta.language}</span>
+                    </div>
+                  )}
+                  {fetchedMeta.anilist_score && (
+                    <div className="flex gap-2 items-center">
+                      <span className="text-muted-foreground w-16 shrink-0">AniList</span>
+                      <span className="flex items-center gap-1 text-amber-400 font-medium">
+                        <Star className="h-3 w-3 fill-amber-400" />
+                        {(fetchedMeta.anilist_score / 10).toFixed(1)}
+                      </span>
+                      {fetchedMeta.anilist_popularity && (
+                        <span className="text-muted-foreground text-[11px]">
+                          · {fetchedMeta.anilist_popularity.toLocaleString()} fãs
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Genres */}
+                {fetchedMeta.genres && fetchedMeta.genres.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">
+                      Gêneros
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {fetchedMeta.genres.map((g) => (
+                        <span key={g} className="px-2 py-0.5 rounded-full bg-accent text-foreground text-[11px] border border-border/60">
+                          {g}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tags */}
+                {fetchedMeta.tags && fetchedMeta.tags.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                      <Tag className="h-3 w-3" /> Tags
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {fetchedMeta.tags.slice(0, 12).map((t) => (
+                        <span key={t} className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-[11px] border border-border/40">
+                          {t}
+                        </span>
+                      ))}
+                      {fetchedMeta.tags.length > 12 && (
+                        <span className="text-[11px] text-muted-foreground">+{fetchedMeta.tags.length - 12}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Apply all button */}
+                <button
+                  onClick={() => applyMetaMutation.mutate()}
+                  disabled={applyMetaMutation.isPending}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+                >
+                  {applyMetaMutation.isPending
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <CheckCircle2 className="h-4 w-4" />}
+                  Aplicar tudo
+                </button>
+                {applyMetaMutation.isError && (
+                  <p className="text-xs text-red-400 text-center">Erro ao aplicar. Tente novamente.</p>
+                )}
+              </div>
             )}
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setEditMeta(false)}
-                className="px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium hover:bg-accent transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => updateMetaMutation.mutate()}
-                disabled={updateMetaMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
-              >
-                {updateMetaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                Salvar
-              </button>
-            </div>
           </div>
         </div>
       )}

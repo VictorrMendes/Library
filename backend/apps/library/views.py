@@ -195,58 +195,200 @@ class SeriesViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="fetch-metadata")
     def fetch_metadata(self, request, pk=None):
-        import requests as req
+        import json as _json
+        import urllib.request
+        import urllib.parse
         series = self.get_object()
         title = series.name
+        library_type = series.library.type if series.library else "manga"
+        result = {"sources": []}
 
-        result = {}
+        def _get(url, params=None, timeout=8):
+            if params:
+                url = f"{url}?{urllib.parse.urlencode(params)}"
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Biblioteca/1.0"})
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    return _json.loads(r.read())
+            except Exception:
+                return None
 
-        # Google Books (no API key needed for basic queries)
-        try:
-            gb = req.get(
+        def _post_json(url, payload, timeout=8):
+            data = _json.dumps(payload).encode()
+            try:
+                req = urllib.request.Request(
+                    url, data=data,
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    return _json.loads(r.read())
+            except Exception:
+                return None
+
+        # ── AniList (manga / manhwa / comic) ────────────────────────────────────
+        if library_type in ("manga", "comic", "image"):
+            al_query = """
+            query ($search: String) {
+              Media(search: $search, type: MANGA) {
+                id title { romaji english }
+                description(asHtml: false)
+                genres
+                tags { name rank isMediaSpoiler }
+                averageScore popularity status
+                staff(perPage: 8) { edges { role node { name { full } } } }
+                startDate { year }
+                coverImage { large medium }
+              }
+            }
+            """
+            al = _post_json("https://graphql.anilist.co", {"query": al_query, "variables": {"search": title}})
+            media = (al or {}).get("data", {}).get("Media")
+            if media:
+                desc = (media.get("description") or "")
+                for tag in ("<br>", "<br/>", "<i>", "</i>", "<b>", "</b>"):
+                    desc = desc.replace(tag, " " if tag == "<br>" or tag == "<br/>" else "")
+                result["summary"] = desc.strip()
+                result["genres"] = media.get("genres", [])
+                result["tags"] = [
+                    t["name"] for t in (media.get("tags") or [])
+                    if not t.get("isMediaSpoiler") and t.get("rank", 0) >= 60
+                ]
+                result["anilist_id"] = media["id"]
+                result["anilist_score"] = media.get("averageScore")
+                result["anilist_popularity"] = media.get("popularity")
+                status_map = {
+                    "FINISHED": "completed", "RELEASING": "ongoing",
+                    "NOT_YET_RELEASED": "ongoing", "CANCELLED": "cancelled", "HIATUS": "hiatus",
+                }
+                result["publication_status"] = status_map.get(media.get("status", ""), "unknown")
+                if (media.get("startDate") or {}).get("year"):
+                    result["release_year"] = media["startDate"]["year"]
+                result["authors"] = [
+                    {"name": e["node"]["name"]["full"], "role": "writer" if "Story" in (e.get("role") or "") else "penciller"}
+                    for e in ((media.get("staff") or {}).get("edges") or [])
+                    if (e.get("role") or "") in ("Story", "Art", "Story & Art", "Story & Art (by volume)")
+                ]
+                cover = media.get("coverImage") or {}
+                result["cover_url"] = cover.get("large") or cover.get("medium") or ""
+                result["sources"].append("anilist")
+
+        # ── Google Books (books / light novels / fallback) ──────────────────────
+        if not result.get("summary") or library_type in ("book", "light_novel"):
+            gb = _get(
                 "https://www.googleapis.com/books/v1/volumes",
-                params={"q": title, "maxResults": 1},
-                timeout=5,
+                params={"q": title, "maxResults": 3, "printType": "books"},
             )
-            if gb.status_code == 200:
-                items = gb.json().get("items", [])
+            if gb:
+                items = gb.get("items", [])
                 if items:
                     vi = items[0]["volumeInfo"]
-                    result["summary"] = vi.get("description", "")
-                    result["language"] = vi.get("language", "")
-                    release_year = vi.get("publishedDate", "")[:4]
-                    result["release_year"] = (
-                        int(release_year) if release_year.isdigit() else None
-                    )
-                    result["genres"] = vi.get("categories", [])
-                    result["thumbnail"] = (
-                        vi.get("imageLinks", {}).get("thumbnail", "")
-                    )
-                    result["authors"] = vi.get("authors", [])
-        except Exception:
-            pass
+                    if not result.get("summary"):
+                        result["summary"] = vi.get("description", "")
+                    if not result.get("language"):
+                        result["language"] = vi.get("language", "")
+                    if not result.get("release_year"):
+                        yr = vi.get("publishedDate", "")[:4]
+                        result["release_year"] = int(yr) if yr.isdigit() else None
+                    if not result.get("genres"):
+                        result["genres"] = vi.get("categories", [])
+                    if not result.get("authors"):
+                        result["authors"] = [{"name": a, "role": "writer"} for a in vi.get("authors", [])]
+                    if not result.get("publisher"):
+                        result["publisher"] = vi.get("publisher", "")
+                    if not result.get("cover_url"):
+                        img = vi.get("imageLinks") or {}
+                        result["cover_url"] = img.get("thumbnail", "").replace("http://", "https://")
+                    isbn_list = vi.get("industryIdentifiers", [])
+                    result.setdefault("isbn", next(
+                        (i["identifier"] for i in isbn_list if i["type"] == "ISBN_13"), ""
+                    ))
+                    result["sources"].append("google_books")
 
-        # Fallback: Open Library
+        # ── Open Library (fallback) ──────────────────────────────────────────────
         if not result.get("summary"):
-            try:
-                ol = req.get(
-                    "https://openlibrary.org/search.json",
-                    params={"title": title, "limit": 1},
-                    timeout=5,
-                )
-                if ol.status_code == 200:
-                    docs = ol.json().get("docs", [])
-                    if docs:
-                        d = docs[0]
-                        if not result.get("authors"):
-                            result["authors"] = d.get("author_name", [])
-                        if not result.get("release_year"):
-                            yr = d.get("first_publish_year")
-                            result["release_year"] = yr
-            except Exception:
-                pass
+            ol = _get(
+                "https://openlibrary.org/search.json",
+                params={"title": title, "limit": 1,
+                        "fields": "key,title,author_name,first_publish_year,publisher,subject,language"},
+            )
+            if ol:
+                docs = ol.get("docs", [])
+                if docs:
+                    d = docs[0]
+                    if not result.get("authors"):
+                        result["authors"] = [{"name": a, "role": "writer"} for a in d.get("author_name", [])]
+                    if not result.get("release_year"):
+                        result["release_year"] = d.get("first_publish_year")
+                    if not result.get("publisher"):
+                        pubs = d.get("publisher", [])
+                        result["publisher"] = pubs[0] if pubs else ""
+                    if not result.get("genres"):
+                        result["genres"] = (d.get("subject") or [])[:10]
+                    langs = d.get("language", [])
+                    if not result.get("language") and langs:
+                        result["language"] = langs[0]
+                    result["sources"].append("open_library")
 
         return Response(result)
+
+    @action(detail=True, methods=["post"], url_path="apply-metadata")
+    def apply_metadata(self, request, pk=None):
+        """Persist fetched metadata (genres, authors, tags, fields) to the database."""
+        from .models import SeriesMetadata as SM
+        series = self.get_object()
+        d = request.data
+
+        meta, _ = SM.objects.get_or_create(series=series)
+
+        if d.get("summary") and not meta.summary_locked:
+            meta.summary = d["summary"]
+        if d.get("language") and not meta.language_locked:
+            meta.language = d["language"]
+        if d.get("release_year") and not meta.release_year_locked:
+            meta.release_year = int(d["release_year"])
+        if d.get("publisher"):
+            meta.publisher = d["publisher"]
+        if d.get("publication_status") and not meta.publication_status_locked:
+            meta.publication_status = d["publication_status"]
+        meta.save()
+
+        if d.get("genres") and not meta.genres_locked:
+            for name in (d["genres"] or [])[:15]:
+                if not name or not str(name).strip():
+                    continue
+                genre, _ = Genre.objects.get_or_create(name=str(name).strip())
+                meta.genres.add(genre)
+
+        if d.get("tags"):
+            for name in (d["tags"] or [])[:25]:
+                if not name or not str(name).strip():
+                    continue
+                tag, _ = Tag.objects.get_or_create(name=str(name).strip())
+                meta.tags.add(tag)
+
+        if d.get("authors") and not meta.people_locked:
+            for author in (d["authors"] or [])[:10]:
+                if isinstance(author, dict):
+                    name = (author.get("name") or "").strip()
+                    role = author.get("role") or "writer"
+                else:
+                    name = str(author).strip()
+                    role = "writer"
+                if not name:
+                    continue
+                person, _ = Person.objects.get_or_create(
+                    normalized=name.lower(),
+                    role=role,
+                    defaults={"name": name},
+                )
+                meta.people.add(person)
+
+        if d.get("anilist_id") and not series.anilist_id:
+            series.anilist_id = int(d["anilist_id"])
+            series.save(update_fields=["anilist_id"])
+
+        return Response({"ok": True})
 
     @action(detail=True, methods=["get", "post"], url_path="relations")
     def relations(self, request, pk=None):
