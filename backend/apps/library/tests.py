@@ -2,6 +2,7 @@ from django.test import TestCase
 from django.db import IntegrityError
 from rest_framework.test import APITestCase
 from rest_framework import status
+from rest_framework_simplejwt.tokens import AccessToken
 from apps.accounts.models import User, UserRole
 from apps.library.models import (
     Library, Series, Volume, Chapter,
@@ -188,3 +189,28 @@ class SeriesViewSetTest(APITestCase):
         self.assertEqual(
             response.data["results"][0]["name"], "Series 1"
         )
+
+
+class ScanStreamAuthTest(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="viewer", email="v@t.com", password="pass"
+        )
+        self.url = "/api/library/scan-stream/"
+
+    def test_no_cookie_returns_401(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_invalid_token_cookie_returns_401(self):
+        self.client.cookies["access_token"] = "not.a.valid.token"
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_valid_token_cookie_opens_stream(self):
+        token = str(AccessToken.for_user(self.user))
+        self.client.cookies["access_token"] = token
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "text/event-stream")
