@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Globe, Minus, X, ArrowLeftRight, Loader2, Trash2, BookOpen, Clock } from "lucide-react";
+import { Globe, Minus, X, ArrowLeftRight, Loader2, Trash2, BookOpen, Clock, BookMarked, Check } from "lucide-react";
 import { clsx } from "clsx";
 import { useTranslatorStore } from "@/store/translator";
 import { lookupWord } from "@/lib/translator";
 import type { Direction } from "@/lib/translator";
+import { vocabularyApi } from "@/lib/api";
+import { toast } from "@/hooks/use-toast";
 
 function isMobile() {
   return typeof window !== "undefined" && window.innerWidth < 640;
@@ -29,13 +31,22 @@ export function TranslatorCard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("translate");
+  const [contextSentence, setContextSentence] = useState("");
 
   // Capture text selection (mouse + touch)
   useEffect(() => {
     const capture = () => {
-      const sel = window.getSelection()?.toString().trim();
-      if (sel && sel.length > 0 && sel.length < 200) {
-        setWord(sel);
+      const sel = window.getSelection();
+      const text = sel?.toString().trim();
+      if (text && text.length > 0 && text.length < 200) {
+        // Capture context sentence
+        const range = sel?.getRangeAt(0);
+        const container = range?.commonAncestorContainer;
+        const fullText = container?.textContent ?? "";
+        const sentences = fullText.split(/[.!?]+/);
+        const ctx = sentences.find((s) => s.includes(text))?.trim() ?? "";
+        setContextSentence(ctx);
+        setWord(text);
         setTab("translate");
         if (!isOpen) setOpen(true);
       }
@@ -251,7 +262,13 @@ export function TranslatorCard() {
       )}
 
       {error && <p className="text-xs text-red-400 text-center">{error}</p>}
-      {result && !error && <TranslationResult result={result} direction={direction} />}
+      {result && !error && (
+        <TranslationResult
+          result={result}
+          direction={direction}
+          contextSentence={contextSentence}
+        />
+      )}
     </div>
   );
 
@@ -417,10 +434,46 @@ export function TranslatorCard() {
   );
 }
 
-function TranslationResult({ result, direction }: {
-  result: { translation: string; phonetic: string; definition: string; example: string };
+function TranslationResult({
+  result,
+  direction,
+  contextSentence,
+}: {
+  result: { word?: string; translation: string; phonetic: string; definition: string; example: string };
   direction: Direction;
+  contextSentence?: string;
 }) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    if (saving || saved) return;
+    setSaving(true);
+    try {
+      await vocabularyApi.create({
+        word: result.word ?? "",
+        translation: result.translation,
+        phonetic: result.phonetic,
+        definition: result.definition,
+        example: result.example,
+        context_sentence: contextSentence ?? "",
+        direction,
+      });
+      setSaved(true);
+      toast({ title: "Palavra salva!", variant: "success" });
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        toast({ title: "Palavra já está no caderno", variant: "default" });
+        setSaved(true);
+      } else {
+        toast({ title: "Erro ao salvar palavra", variant: "destructive" });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-3 pt-1 border-t border-border">
       <div className="bg-primary/5 rounded-lg px-3 py-2.5">
@@ -444,6 +497,24 @@ function TranslationResult({ result, direction }: {
           <p className="text-xs leading-relaxed text-muted-foreground italic">&ldquo;{result.example}&rdquo;</p>
         </div>
       )}
+      <button
+        onClick={handleSave}
+        disabled={saving || saved}
+        className={clsx(
+          "w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors",
+          saved
+            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default"
+            : "bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-60"
+        )}
+      >
+        {saving ? (
+          <><Loader2 className="h-3 w-3 animate-spin" />Salvando...</>
+        ) : saved ? (
+          <><Check className="h-3 w-3" />Salvo ✓</>
+        ) : (
+          <><BookMarked className="h-3 w-3" />Salvar no caderno</>
+        )}
+      </button>
     </div>
   );
 }

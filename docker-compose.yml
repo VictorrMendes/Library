@@ -1,15 +1,17 @@
 services:
-  db:
+  postgres:
     image: postgres:16-alpine
     container_name: biblioteca_db
     environment:
       POSTGRES_DB: biblioteca
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: biblioteca
+      POSTGRES_PASSWORD: biblioteca
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U biblioteca"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -17,6 +19,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: biblioteca_redis
+    ports:
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -28,27 +32,26 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: biblioteca_backend
+    env_file:
+      - ./backend/.env
     environment:
-      SECRET_KEY: change-me-in-production
-      DEBUG: "False"
-      ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
-      DB_HOST: db
+      DB_HOST: postgres
       DB_NAME: biblioteca
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_USER: biblioteca
+      DB_PASSWORD: biblioteca
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /data/media
       COVERS_ROOT: /data/covers
       UPLOADS_ROOT: /uploads
     volumes:
-      - ./manga:/manga               # biblioteca de arquivos
-      - uploads_data:/uploads        # staging de uploads
+      - ./manga:/manga               # library file storage
+      - uploads_data:/uploads        # upload staging area
       - media_data:/data/media
       - covers_data:/data/covers
     ports:
       - "8000:8000"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -56,46 +59,6 @@ services:
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4"
-
-  celery:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: biblioteca_celery
-    environment:
-      SECRET_KEY: change-me-in-production
-      DB_HOST: db
-      DB_NAME: biblioteca
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      REDIS_URL: redis://redis:6379/0
-      MEDIA_ROOT: /data/media
-      COVERS_ROOT: /data/covers
-      UPLOADS_ROOT: /uploads
-    volumes:
-      - ./manga:/manga
-      - uploads_data:/uploads
-      - media_data:/data/media
-      - covers_data:/data/covers
-    depends_on:
-      - backend
-    command: celery -A config worker -l info -c 2
-
-  celery-beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: biblioteca_beat
-    environment:
-      SECRET_KEY: change-me-in-production
-      DB_HOST: db
-      DB_NAME: biblioteca
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      - backend
-    command: celery -A config beat -l info
 
   frontend:
     build:
@@ -108,6 +71,34 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: biblioteca_celery
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_HOST: postgres
+      DB_NAME: biblioteca
+      DB_USER: biblioteca
+      DB_PASSWORD: biblioteca
+      REDIS_URL: redis://redis:6379/0
+      MEDIA_ROOT: /data/media
+      COVERS_ROOT: /data/covers
+      UPLOADS_ROOT: /uploads
+    volumes:
+      - ./manga:/manga
+      - uploads_data:/uploads
+      - media_data:/data/media
+      - covers_data:/data/covers
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A config worker -l info
 
 volumes:
   postgres_data:

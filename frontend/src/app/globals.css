@@ -51,7 +51,8 @@
 
 @layer base {
   /* ── Deep amethyst dark theme (default) ──────────────── */
-  :root {
+  :root,
+  .dark {
     --background: 301 62% 4%;
     --foreground: 300 18% 89%;
     --card: 301 58% 7%;

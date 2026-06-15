@@ -7,6 +7,7 @@ import { Loader2, Eye, EyeOff, CheckCircle2, Key, Trash2, Plus, Camera, Radio, L
 import { authApi, scrobbleApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import type { User, ScrobbleCredential } from "@/types";
+import { toast } from "@/hooks/use-toast";
 import { clsx } from "clsx";
 
 interface PrefsForm {
@@ -69,7 +70,9 @@ export default function ProfilePage() {
       setUser(fresh);
       setInfoSuccess(true);
       setTimeout(() => setInfoSuccess(false), 3000);
+      toast({ title: "Perfil atualizado", variant: "success" });
     },
+    onError: () => toast({ title: "Erro ao salvar perfil", variant: "destructive" }),
   });
 
   const avatarMutation = useMutation({
@@ -101,7 +104,9 @@ export default function ProfilePage() {
       pwForm.reset();
       setPwSuccess(true);
       setTimeout(() => setPwSuccess(false), 3000);
+      toast({ title: "Senha alterada com sucesso", variant: "success" });
     },
+    onError: () => toast({ title: "Senha atual incorreta", variant: "destructive" }),
   });
 
   const { data: scrobbleCreds = [], refetch: refetchCreds } = useQuery<ScrobbleCredential[]>({
@@ -112,12 +117,16 @@ export default function ProfilePage() {
   const saveScrobbleMutation = useMutation({
     mutationFn: ({ provider, token }: { provider: string; token: string }) =>
       scrobbleApi.save(provider, token),
-    onSuccess: () => { refetchCreds(); setAnilistToken(""); setMalToken(""); },
+    onSuccess: () => {
+      refetchCreds(); setAnilistToken(""); setMalToken("");
+      toast({ title: "Conta conectada", variant: "success" });
+    },
+    onError: () => toast({ title: "Erro ao conectar conta", variant: "destructive" }),
   });
 
   const revokeScrobbleMutation = useMutation({
     mutationFn: (provider: string) => scrobbleApi.revoke(provider),
-    onSuccess: () => refetchCreds(),
+    onSuccess: () => { refetchCreds(); toast({ title: "Conta desconectada" }); },
   });
 
   const { data: apiKeys = [], refetch: refetchKeys } = useQuery<ApiKey[]>({

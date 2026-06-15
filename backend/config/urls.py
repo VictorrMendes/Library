@@ -18,6 +18,7 @@ urlpatterns = [
     path("api/scanner/", include("apps.scanner.urls")),
     path("api/collections/", include("apps.collections.urls")),
     path("api/stats/", include("apps.stats.urls")),
+    path("api/vocabulary/", include("apps.vocabulary.urls")),
     path("opds/", include("apps.opds.urls")),
     re_path(
         r"^media/(?P<path>.*)$",

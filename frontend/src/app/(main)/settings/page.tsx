@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { authApi, apiKeysApi, progressApi, backupApi, deviceProfilesApi, fontsApi, scrobbleErrorsApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { toast } from "@/hooks/use-toast";
 import { clsx } from "clsx";
 
 const THEMES = [
@@ -69,7 +70,8 @@ export default function SettingsPage() {
 
   const { mutate: savePrefs } = useMutation({
     mutationFn: (prefs: Record<string, unknown>) => authApi.updatePreferences(prefs),
-    onSuccess: (res) => setUser(res.data),
+    onSuccess: (res) => { setUser(res.data); toast({ title: "Preferências salvas", variant: "success" }); },
+    onError: () => toast({ title: "Erro ao salvar preferências", variant: "destructive" }),
   });
 
   const { data: deviceProfiles = [], refetch: refetchProfiles } = useQuery({
@@ -93,7 +95,8 @@ export default function SettingsPage() {
   const uploadFontMutation = useMutation({
     mutationFn: ({ name, file }: { name: string; file: File }) =>
       fontsApi.upload(name, file),
-    onSuccess: () => { refetchFonts(); setFontName(""); setFontFile(null); },
+    onSuccess: () => { refetchFonts(); setFontName(""); setFontFile(null); toast({ title: "Fonte adicionada", variant: "success" }); },
+    onError: () => toast({ title: "Erro ao adicionar fonte", variant: "destructive" }),
   });
 
   const deleteFontMutation = useMutation({
@@ -125,7 +128,9 @@ export default function SettingsPage() {
       setNewKeyValue(res.data.key);
       setNewKeyLabel("");
       refetchKeys();
+      toast({ title: "Chave de API criada", variant: "success" });
     },
+    onError: () => toast({ title: "Erro ao criar chave", variant: "destructive" }),
   });
 
   const revokeKeyMutation = useMutation({

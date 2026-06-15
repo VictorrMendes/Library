@@ -314,3 +314,22 @@ export const fontsApi = {
   },
   delete: (id: number) => api.delete(`/library/fonts/${id}/`),
 };
+
+// ─── Vocabulary ───────────────────────────────────────────────────────────────
+export const vocabularyApi = {
+  list: (params?: Record<string, unknown>) =>
+    api.get("/vocabulary/", { params }),
+  create: (data: {
+    word: string; translation: string; phonetic?: string; definition?: string;
+    example?: string; context_sentence?: string; source_series_name?: string;
+    direction?: string;
+  }) => api.post("/vocabulary/", data),
+  update: (id: number, data: Partial<{ status: string; context_sentence: string }>) =>
+    api.patch(`/vocabulary/${id}/`, data),
+  delete: (id: number) => api.delete(`/vocabulary/${id}/`),
+  review: (entry_id: number, quality: number) =>
+    api.post("/vocabulary/review/", { entry_id, quality }),
+  exportAnki: () =>
+    api.get("/vocabulary/export/anki/", { responseType: "blob" }),
+  stats: () => api.get("/vocabulary/stats/"),
+};

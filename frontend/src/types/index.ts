@@ -194,3 +194,31 @@ export interface UserStats {
   total_reading_hours: number;
   last_aggregated: string | null;
 }
+
+export interface VocabularyEntry {
+  id: number;
+  word: string;
+  translation: string;
+  phonetic: string;
+  definition: string;
+  example: string;
+  context_sentence: string;
+  source_series_name: string;
+  direction: "en-pt" | "pt-en";
+  status: "new" | "learning" | "known";
+  review_count: number;
+  ease_factor: number;
+  interval_days: number;
+  next_review_at: string | null;
+  created_at: string;
+  last_reviewed_at: string | null;
+}
+
+export interface VocabularyStats {
+  total: number;
+  new: number;
+  learning: number;
+  known: number;
+  due_today: number;
+  streak_days: number;
+}

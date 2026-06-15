@@ -9,6 +9,7 @@ import {
   Globe, Users, CheckCircle2, X,
 } from "lucide-react";
 import { seriesApi, readerApi, collectionsApi, ratingsApi, statsApi } from "@/lib/api";
+import { toast } from "@/hooks/use-toast";
 import { ShelfButton } from "@/components/series/ShelfButton";
 import type { ShelfStatus } from "@/components/series/ShelfButton";
 import { SeriesDetailSkeleton } from "@/components/ui/Skeleton";
@@ -93,7 +94,11 @@ export default function SeriesDetailPage() {
   const shelfAddMutation = useMutation({
     mutationFn: (s: ShelfStatus) =>
       collectionsApi.addWantToRead(Number(id), s),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shelf", id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shelf", id] });
+      toast({ title: "Adicionado à estante", variant: "success" });
+    },
+    onError: () => toast({ title: "Erro ao adicionar à estante", variant: "destructive" }),
   });
 
   const shelfUpdateMutation = useMutation({
@@ -104,7 +109,10 @@ export default function SeriesDetailPage() {
 
   const shelfRemoveMutation = useMutation({
     mutationFn: (itemId: number) => collectionsApi.removeWantToRead(itemId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shelf", id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shelf", id] });
+      toast({ title: "Removido da estante" });
+    },
   });
 
   const [ratingScore, setRatingScore] = useState(0);
@@ -165,7 +173,9 @@ export default function SeriesDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["series", id] });
       setEditMeta(false);
+      toast({ title: "Metadados salvos", variant: "success" });
     },
+    onError: () => toast({ title: "Erro ao salvar metadados", variant: "destructive" }),
   });
 
   const fetchMetaMutation = useMutation({
@@ -190,7 +200,9 @@ export default function SeriesDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["series", id] });
       setFetchedMeta(null);
       setEditMeta(false);
+      toast({ title: "Metadados aplicados", variant: "success" });
     },
+    onError: () => toast({ title: "Erro ao aplicar metadados", variant: "destructive" }),
   });
 
   const firstGenre = series?.metadata?.genres?.[0]?.name;
@@ -205,7 +217,11 @@ export default function SeriesDetailPage() {
 
   const deleteMutation = useMutation({
     mutationFn: () => seriesApi.delete(Number(id)),
-    onSuccess: () => router.push("/dashboard"),
+    onSuccess: () => {
+      toast({ title: "Série removida" });
+      router.push("/dashboard");
+    },
+    onError: () => toast({ title: "Erro ao remover série", variant: "destructive" }),
   });
 
   const { data: estimate } = useQuery({

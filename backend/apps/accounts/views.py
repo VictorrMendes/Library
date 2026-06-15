@@ -1,9 +1,11 @@
 import secrets
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import (
     UserSerializer,
     RegisterSerializer,
@@ -14,6 +16,30 @@ from .serializers import (
 from .models import ApiKey, ScrobbleCredential, ScrobbleError, DeviceProfile
 
 User = get_user_model()
+
+# ─── Rate-limited login ───────────────────────────────────────────────────────
+
+_LOGIN_RATE_LIMIT = 10   # max attempts
+_LOGIN_RATE_WINDOW = 60  # seconds
+
+
+class RateLimitedTokenObtainPairView(TokenObtainPairView):
+    """Wraps simplejwt's login view with a 10 req/min per-IP rate limit."""
+
+    def post(self, request, *args, **kwargs):
+        ip = (
+            request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+            or request.META.get("REMOTE_ADDR", "unknown")
+        )
+        cache_key = f"login_attempts_{ip}"
+        attempts = cache.get(cache_key, 0)
+        if attempts >= _LOGIN_RATE_LIMIT:
+            return Response(
+                {"detail": "Muitas tentativas de login. Tente novamente em 1 minuto."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        cache.set(cache_key, attempts + 1, timeout=_LOGIN_RATE_WINDOW)
+        return super().post(request, *args, **kwargs)
 
 
 class RegisterView(generics.CreateAPIView):

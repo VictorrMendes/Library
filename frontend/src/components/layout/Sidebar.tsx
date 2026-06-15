@@ -28,6 +28,8 @@ import {
   Hash,
   Settings,
   AlertTriangle,
+  BookMarked,
+  Languages,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuthStore } from "@/store/auth";
@@ -46,6 +48,7 @@ const LIBRARY_ICONS: Record<string, React.ElementType> = {
 const mainNav = [
   { href: "/dashboard", icon: Home, label: "Dashboard" },
   { href: "/search", icon: Search, label: "Buscar" },
+  { href: "/vocabulary", icon: BookMarked, label: "Vocabulário" },
   { href: "/libraries", icon: Library, label: "Bibliotecas" },
   { href: "/upload", icon: UploadCloud, label: "Upload" },
   { href: "/genres", icon: Layers, label: "Gêneros" },
@@ -211,6 +214,14 @@ export function Sidebar() {
             <Globe className="h-4 w-4 shrink-0" strokeWidth={translatorOpen ? 2 : 1.75} />
             Tradutor
           </button>
+
+          <div className="pt-5">
+            <p className="px-3 pb-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
+              Idiomas
+            </p>
+            <NavItem href="/search?language=en" icon={Languages} label="🇺🇸 Inglês" active={false} />
+            <NavItem href="/search?language=pt" icon={Languages} label="🇧🇷 Português" active={false} />
+          </div>
 
           {libraries.length > 0 && (
             <div className="pt-5">

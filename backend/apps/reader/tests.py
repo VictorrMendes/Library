@@ -419,3 +419,90 @@ class AnnotationTest(APITestCase):
             f"/api/reader/annotations/{ann2.pk}/"
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+# ─── Continue point ───────────────────────────────────────────────────────────
+
+class ContinuePointTest(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="user", email="u@t.com", password="pass"
+        )
+        self.client.force_authenticate(user=self.user)
+        self.lib = Library.objects.create(
+            name="Lib", folder_paths=["/l"]
+        )
+        self.series = Series.objects.create(library=self.lib, name="S1")
+        self.volume = Volume.objects.create(
+            series=self.series,
+            name="Vol 1",
+            min_number=1,
+            max_number=1,
+        )
+        self.ch1 = Chapter.objects.create(
+            volume=self.volume,
+            min_number=1,
+            max_number=1,
+            sort_order=1,
+            pages=10,
+        )
+        self.ch2 = Chapter.objects.create(
+            volume=self.volume,
+            min_number=2,
+            max_number=2,
+            sort_order=2,
+            pages=10,
+        )
+
+    def _url(self):
+        return f"/api/reader/series/{self.series.pk}/continue/"
+
+    def test_no_progress_returns_first_chapter(self):
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["chapter_id"], self.ch1.pk)
+        self.assertEqual(response.data["pages_read"], 0)
+
+    def test_with_progress_returns_last_modified_chapter(self):
+        ReadingProgress.objects.create(
+            user=self.user,
+            chapter=self.ch1,
+            series=self.series,
+            library=self.lib,
+            pages_read=5,
+        )
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["chapter_id"], self.ch1.pk)
+        self.assertEqual(response.data["pages_read"], 5)
+
+    def test_zero_pages_read_entries_are_excluded(self):
+        # A progress entry with pages_read=0 must not be returned.
+        ReadingProgress.objects.create(
+            user=self.user,
+            chapter=self.ch1,
+            series=self.series,
+            library=self.lib,
+            pages_read=0,
+        )
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Falls back to first chapter with pages_read=0 (no real progress)
+        self.assertEqual(response.data["chapter_id"], self.ch1.pk)
+        self.assertEqual(response.data["pages_read"], 0)
+
+    def test_series_without_chapters_returns_null(self):
+        empty_series = Series.objects.create(
+            library=self.lib, name="Empty Series"
+        )
+        response = self.client.get(
+            f"/api/reader/series/{empty_series.pk}/continue/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["chapter_id"])
+
+    def test_unauthenticated_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

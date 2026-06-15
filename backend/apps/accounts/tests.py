@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.core.cache import cache
 from rest_framework.test import APITestCase
 from rest_framework import status
 from apps.accounts.models import User, ApiKey, UserRole
@@ -244,3 +245,93 @@ class ApiKeyTest(APITestCase):
         self.client.delete(f"/api/account/api-keys/{key_id}/")
         key = ApiKey.objects.get(pk=key_id)
         self.assertFalse(key.is_active)
+
+
+class LoginTokenRefreshTest(APITestCase):
+    """Verify that /api/account/login/ issues tokens and /token/refresh/ works."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="tokenuser",
+            email="token@test.com",
+            password="tokenpass123",
+        )
+
+    def test_login_returns_access_and_refresh_tokens(self):
+        response = self.client.post("/api/account/login/", {
+            "username": "tokenuser",
+            "password": "tokenpass123",
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("access", response.data)
+        self.assertIn("refresh", response.data)
+
+    def test_token_refresh_returns_new_access(self):
+        login = self.client.post("/api/account/login/", {
+            "username": "tokenuser",
+            "password": "tokenpass123",
+        })
+        refresh_token = login.data["refresh"]
+        response = self.client.post("/api/account/token/refresh/", {
+            "refresh": refresh_token,
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("access", response.data)
+
+
+class LoginRateLimitTest(APITestCase):
+    """Verify that /api/account/login/ is rate-limited to 10 req/min per IP."""
+
+    URL = "/api/account/login/"
+
+    def setUp(self):
+        # Clear cache so rate limit counters start fresh for each test.
+        cache.clear()
+        User.objects.create_user(
+            username="ratelimituser",
+            email="rl@test.com",
+            password="correct_password",
+        )
+
+    def test_valid_login_returns_200(self):
+        response = self.client.post(self.URL, {
+            "username": "ratelimituser",
+            "password": "correct_password",
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("access", response.data)
+
+    def test_invalid_credentials_returns_401(self):
+        response = self.client.post(self.URL, {
+            "username": "ratelimituser",
+            "password": "wrongpassword",
+        })
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_rate_limit_blocks_after_ten_attempts(self):
+        # Send 10 failed attempts to exhaust the limit.
+        for _ in range(10):
+            self.client.post(self.URL, {
+                "username": "ratelimituser",
+                "password": "wrong",
+            })
+        # The 11th attempt must be blocked with 429.
+        response = self.client.post(self.URL, {
+            "username": "ratelimituser",
+            "password": "wrong",
+        })
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_rate_limit_blocks_even_correct_password(self):
+        # Exhaust the limit with wrong passwords.
+        for _ in range(10):
+            self.client.post(self.URL, {
+                "username": "ratelimituser",
+                "password": "wrong",
+            })
+        # Even a correct login must be blocked while rate-limited.
+        response = self.client.post(self.URL, {
+            "username": "ratelimituser",
+            "password": "correct_password",
+        })
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)

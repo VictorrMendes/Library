@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "apps.scanner",
     "apps.collections",
     "apps.stats",
+    "apps.vocabulary",
 ]
 
 MIDDLEWARE = [

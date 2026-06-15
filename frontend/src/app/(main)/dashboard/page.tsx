@@ -2,13 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock, BookOpen, TrendingUp, Library, Flame, Settings2, Check, GripVertical } from "lucide-react";
+import { Clock, BookOpen, TrendingUp, Library, Flame, Settings2, Check, GripVertical, GraduationCap } from "lucide-react";
 import { Reorder } from "framer-motion";
-import { seriesApi, statsApi, authApi } from "@/lib/api";
+import Link from "next/link";
+import { seriesApi, statsApi, authApi, vocabularyApi } from "@/lib/api";
 import { SeriesCard } from "@/components/series/SeriesCard";
 import { SeriesCardSkeleton } from "@/components/ui/Skeleton";
 import { useAuthStore } from "@/store/auth";
-import type { Series, UserStats } from "@/types";
+import type { Series, UserStats, VocabularyStats } from "@/types";
 import { clsx } from "clsx";
 
 const ALL_SECTIONS = [
@@ -115,6 +116,11 @@ export default function DashboardPage() {
       statsApi.history().then((r) => r.data.results as Array<{ read_at: string }>),
   });
 
+  const { data: vocabStats } = useQuery<VocabularyStats>({
+    queryKey: ["vocabulary", "stats"],
+    queryFn: () => vocabularyApi.stats().then((r) => r.data),
+  });
+
   const streak = computeStreak(history);
 
   return (
@@ -212,6 +218,36 @@ export default function DashboardPage() {
             label="Horas de Leitura"
             value={`${stats.total_reading_hours}h`}
           />
+        </div>
+      )}
+
+      {/* Vocabulary widget */}
+      {vocabStats && vocabStats.total > 0 && (
+        <div className="flex items-center gap-4 flex-wrap">
+          {vocabStats.due_today > 0 && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-primary/8 border border-primary/20 rounded-md">
+              <GraduationCap className="h-4 w-4 text-primary shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-primary">
+                  📚 {vocabStats.due_today} {vocabStats.due_today === 1 ? "palavra" : "palavras"} para revisar
+                </p>
+                {vocabStats.streak_days > 0 && (
+                  <p className="text-xs text-muted-foreground">🔥 Streak: {vocabStats.streak_days} {vocabStats.streak_days === 1 ? "dia" : "dias"}</p>
+                )}
+              </div>
+              <Link
+                href="/vocabulary/review"
+                className="ml-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
+              >
+                Revisar agora
+              </Link>
+            </div>
+          )}
+          {vocabStats.due_today === 0 && vocabStats.streak_days > 0 && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-amber-500/8 border border-amber-500/20 rounded-md w-fit">
+              <p className="text-sm font-semibold text-amber-400">🔥 Streak: {vocabStats.streak_days} {vocabStats.streak_days === 1 ? "dia" : "dias"}</p>
+            </div>
+          )}
         </div>
       )}
 
