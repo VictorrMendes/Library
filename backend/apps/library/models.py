@@ -308,6 +308,7 @@ class MangaFile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(null=True, blank=True)
     last_file_analysis = models.DateTimeField(null=True, blank=True)
+    has_text_layer = models.BooleanField(null=True, blank=True)
 
     class Meta:
         db_table = "library_manga_file"

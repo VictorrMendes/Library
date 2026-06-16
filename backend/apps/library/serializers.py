@@ -92,7 +92,10 @@ class SeriesListSerializer(serializers.ModelSerializer):
 class MangaFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = MangaFile
-        fields = ["id", "file_path", "pages", "format", "bytes", "extension", "last_modified"]
+        fields = [
+            "id", "file_path", "pages", "format", "bytes",
+            "extension", "last_modified", "has_text_layer",
+        ]
 
 
 class ChapterSerializer(serializers.ModelSerializer):

@@ -30,6 +30,8 @@ interface ChapterData {
   format?: "images" | "pdf" | "epub";
   total_pages?: number; pages?: string[];
   pdf_url?: string; book_page_base_url?: string;
+  manga_file_id?: number;
+  has_text_layer?: boolean | null;
 }
 
 // ── Local-only prefs (localStorage) ──────────────────────────────────────────
@@ -814,6 +816,8 @@ function ReaderContent() {
             <PdfViewer
               pdfUrl={chapterData.pdf_url} currentPage={currentPage}
               onNumPages={setPdfNumPages} onPageChange={handlePdfPageChange}
+              mangaFileId={chapterData.manga_file_id}
+              hasTextLayer={chapterData.has_text_layer}
             />
           </div>
           <button onClick={() => navigateRef.current(false)} disabled={currentPage === 0}

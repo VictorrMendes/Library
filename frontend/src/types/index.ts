@@ -113,6 +113,7 @@ export interface MangaFile {
   format: "image" | "archive" | "epub" | "pdf" | "unknown";
   bytes: number;
   extension: string;
+  has_text_layer: boolean | null;
 }
 
 export interface Chapter {

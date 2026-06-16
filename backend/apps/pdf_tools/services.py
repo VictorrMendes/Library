@@ -131,3 +131,16 @@ class StirlingClient:
             files = [('fileInput', (os.path.basename(file_path), fh, 'application/pdf'))]
             data = {'format': fmt}
             return self._post('/api/v1/misc/extract-images', files=files, data=data)
+
+    def pdf_to_img(self, file_path, page_num=1, img_format='jpeg', dpi=150):
+        """Render a PDF page to an image; returns ZIP bytes containing the image."""
+        with self._open_file(file_path) as fh:
+            files = [('fileInput', (os.path.basename(file_path), fh, 'application/pdf'))]
+            data = {
+                'pageNumbers': str(page_num),
+                'imageFormat': img_format,
+                'singleOrMultiple': 'single',
+                'colorType': 'color',
+                'dpi': str(dpi),
+            }
+            return self._post('/api/v1/convert/pdf/img', files=files, data=data)
