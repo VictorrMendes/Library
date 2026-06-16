@@ -175,8 +175,6 @@ def chapter_images(request, chapter_id):
             "format": "pdf",
             "total_pages": chapter.pages,
             "pdf_url": f"/api/reader/chapter/{chapter_id}/pdf/",
-            "manga_file_id": manga_file.pk,
-            "has_text_layer": manga_file.has_text_layer,
         })
 
     pages = [

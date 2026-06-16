@@ -495,9 +495,6 @@ def scan_library(self, library_id):
                                 os.path.getmtime(full_path), tz=dt_timezone.utc
                             ),
                         )
-                        if fmt == 'pdf':
-                            from apps.pdf_tools.tasks import auto_process_new_pdf
-                            auto_process_new_pdf.delay(mf.id)
                     except Exception as file_exc:
                         from apps.library.models import MediaError
                         MediaError.objects.get_or_create(
