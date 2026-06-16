@@ -1,4 +1,4 @@
-const CACHE = "biblioteca-v2";
+const CACHE = "biblioteca-v3";
 const STATIC = ["/offline.html"];
 
 self.addEventListener("install", (e) => {
@@ -18,14 +18,16 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   if (e.request.url.includes("/api/")) return;
+  if (e.request.url.includes("_next/static")) return;
 
   e.respondWith(
     caches.match(e.request).then((cached) => {
       if (cached) return cached;
       return fetch(e.request)
         .then((res) => {
-          if (res.ok && !e.request.url.includes("_next/static")) {
-            caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
+          if (res.ok) {
+            const resClone = res.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, resClone));
           }
           return res;
         })
