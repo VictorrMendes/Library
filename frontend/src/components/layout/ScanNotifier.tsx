@@ -14,11 +14,7 @@ interface ScanEvent {
 }
 
 function showToast(msg: string, type: "success" | "error" | "info") {
-  const colors = {
-    success: "#16a34a",
-    error: "#dc2626",
-    info: "#2563eb",
-  };
+  const colors = { success: "#16a34a", error: "#dc2626", info: "#2563eb" };
   const el = document.createElement("div");
   el.textContent = msg;
   el.style.cssText = `
@@ -34,70 +30,108 @@ function showToast(msg: string, type: "success" | "error" | "info") {
   }, 4000);
 }
 
+// Use fetch() instead of EventSource so we control every reconnect;
+// EventSource has a built-in browser retry that fires before onerror
+// and can't be fully suppressed — causing rapid reconnect storms over QUIC.
+async function readSseStream(
+  url: string,
+  token: string,
+  onEvent: (line: string) => void,
+  signal: AbortSignal
+) {
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+    signal,
+    // Force HTTP/1.1 — fetch doesn't expose this directly, but the
+    // Alt-Svc:clear header from nginx prevents QUIC negotiation.
+    cache: "no-store",
+  });
+
+  if (!res.ok || !res.body) throw new Error(`SSE ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) onEvent(line);
+  }
+}
+
 export function ScanNotifier() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const statusRef = useRef<Map<number, string>>(new Map());
-  const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const controller = new AbortController();
     let attempts = 0;
-    let destroyed = false;
+    let timerRef: ReturnType<typeof setTimeout> | null = null;
 
-    function connect() {
-      if (destroyed) return;
+    function handleLine(line: string) {
+      if (!line.startsWith("data:")) return;
+      attempts = 0; // reset backoff on live data
+      try {
+        const job: ScanEvent = JSON.parse(line.slice(5).trim());
+        const prev = statusRef.current.get(job.id);
 
-      const es = new EventSource(sseUrl(), { withCredentials: true });
-      esRef.current = es;
-
-      es.onmessage = (e) => {
-        attempts = 0; // reset backoff on successful message
-        try {
-          const job: ScanEvent = JSON.parse(e.data);
-          const prev = statusRef.current.get(job.id);
-
-          if (prev && prev !== job.status) {
-            if (job.status === "completed") {
-              showToast(
-                `Scan de "${job.library_name}" concluído! +${job.files_added} arquivo(s)`,
-                "success"
-              );
-              queryClient.invalidateQueries({ queryKey: ["series"] });
-              queryClient.invalidateQueries({ queryKey: ["libraries"] });
-            } else if (job.status === "failed") {
-              showToast(`Scan de "${job.library_name}" falhou.`, "error");
-            } else if (job.status === "running" && prev === "pending") {
-              showToast(`Scan de "${job.library_name}" iniciado…`, "info");
-            }
+        if (prev && prev !== job.status) {
+          if (job.status === "completed") {
+            showToast(
+              `Scan de "${job.library_name}" concluído! +${job.files_added} arquivo(s)`,
+              "success"
+            );
+            queryClient.invalidateQueries({ queryKey: ["series"] });
+            queryClient.invalidateQueries({ queryKey: ["libraries"] });
+          } else if (job.status === "failed") {
+            showToast(`Scan de "${job.library_name}" falhou.`, "error");
+          } else if (job.status === "running" && prev === "pending") {
+            showToast(`Scan de "${job.library_name}" iniciado…`, "info");
           }
-
-          statusRef.current.set(job.id, job.status);
-        } catch {
-          // ignore malformed events
         }
-      };
 
-      es.onerror = () => {
-        es.close();
-        esRef.current = null;
-        if (destroyed || attempts >= 6) return;
-        // Exponential backoff: 2s, 4s, 8s, 16s, 30s, 30s
-        const delay = Math.min(1000 * 2 ** (attempts + 1), 30_000);
-        attempts++;
-        timeoutId = setTimeout(connect, delay);
-      };
+        statusRef.current.set(job.id, job.status);
+      } catch {
+        // ignore malformed events
+      }
+    }
+
+    function scheduleConnect() {
+      if (controller.signal.aborted || attempts >= 6) return;
+      // Exponential backoff: 2s, 4s, 8s, 16s, 30s, 30s
+      const delay = Math.min(1000 * 2 ** (attempts + 1), 30_000);
+      attempts++;
+      timerRef = setTimeout(connect, delay);
+    }
+
+    async function connect() {
+      if (controller.signal.aborted) return;
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+      try {
+        await readSseStream(sseUrl(), token, handleLine, controller.signal);
+        // Stream ended cleanly — reconnect
+        scheduleConnect();
+      } catch (err: unknown) {
+        if (controller.signal.aborted) return;
+        const name = err instanceof Error ? err.name : "";
+        if (name === "AbortError") return;
+        scheduleConnect();
+      }
     }
 
     connect();
 
     return () => {
-      destroyed = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      esRef.current?.close();
-      esRef.current = null;
+      controller.abort();
+      if (timerRef) clearTimeout(timerRef);
     };
   }, [user, queryClient]);
 
