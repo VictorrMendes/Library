@@ -222,3 +222,13 @@ export interface VocabularyStats {
   due_today: number;
   streak_days: number;
 }
+
+export interface PdfJob {
+  id: number;
+  operation: string;
+  status: 'pending' | 'processing' | 'done' | 'failed';
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+  result_url?: string;
+}

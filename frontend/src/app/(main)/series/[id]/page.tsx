@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   BookOpen, Clock, ChevronRight, Play, Tag, Trash2, Loader2, Camera, Star,
-  Globe, Users, CheckCircle2, X,
+  Globe, Users, CheckCircle2, X, Wrench,
 } from "lucide-react";
 import { seriesApi, readerApi, collectionsApi, ratingsApi, statsApi } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
@@ -14,7 +14,8 @@ import { ShelfButton } from "@/components/series/ShelfButton";
 import type { ShelfStatus } from "@/components/series/ShelfButton";
 import { SeriesDetailSkeleton } from "@/components/ui/Skeleton";
 import { SeriesCard } from "@/components/series/SeriesCard";
-import type { Series, SeriesRelation, Volume } from "@/types";
+import { PdfToolsModal } from "@/components/pdf/PdfToolsModal";
+import type { Series, SeriesRelation, Volume, MangaFile } from "@/types";
 import { clsx } from "clsx";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -60,6 +61,7 @@ export default function SeriesDetailPage() {
   const queryClient = useQueryClient();
   const coverInputRef = useRef<HTMLInputElement>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [pdfToolsFile, setPdfToolsFile] = useState<MangaFile | null>(null);
 
   const { data: series, isLoading } = useQuery<Series>({
     queryKey: ["series", id],
@@ -266,6 +268,9 @@ export default function SeriesDetailPage() {
   const meta = series.metadata;
   const writers = meta?.people?.filter((p) => p.role === "writer") ?? [];
   const artists = meta?.people?.filter((p) => p.role === "penciller") ?? [];
+  const allPdfFiles = (volumes ?? []).flatMap((v) =>
+    v.chapters.flatMap((c) => c.files.filter((f) => f.format === "pdf"))
+  );
   const totalChapters = volumes?.reduce((acc, v) => acc + v.chapters.length, 0) ?? 0;
   const statusColor = meta?.publication_status ? STATUS_COLORS[meta.publication_status] : null;
 
@@ -409,6 +414,15 @@ export default function SeriesDetailPage() {
                 <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
                 Apagar
               </button>
+              {allPdfFiles.length > 0 && (
+                <button
+                  onClick={() => setPdfToolsFile(allPdfFiles[0])}
+                  className="flex items-center gap-2 px-4 py-2 rounded-md bg-secondary border border-border/60 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Ferramentas PDF
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -681,12 +695,25 @@ export default function SeriesDetailPage() {
             </div>
             <div className="space-y-2">
               {volumes.map((vol) => (
-                <VolumeAccordion key={vol.id} volume={vol} progress={progress ?? []} />
+                <VolumeAccordion
+                  key={vol.id}
+                  volume={vol}
+                  progress={progress ?? []}
+                  onOpenPdfTools={setPdfToolsFile}
+                />
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {/* PDF Tools modal */}
+      <PdfToolsModal
+        file={pdfToolsFile}
+        allPdfFiles={allPdfFiles}
+        open={!!pdfToolsFile}
+        onClose={() => setPdfToolsFile(null)}
+      />
 
       {/* Edit metadata modal */}
       {editMeta && (
@@ -985,9 +1012,11 @@ export default function SeriesDetailPage() {
 function VolumeAccordion({
   volume,
   progress,
+  onOpenPdfTools,
 }: {
   volume: Volume;
   progress: Array<{ chapter_id: number; pages_read: number; is_completed: boolean }>;
+  onOpenPdfTools: (file: MangaFile) => void;
 }) {
   const progressMap = new Map(progress.map((p) => [p.chapter_id, p]));
   const completedCount = volume.chapters.filter(
@@ -1020,32 +1049,43 @@ function VolumeAccordion({
       <div className="divide-y divide-border/40">
         {volume.chapters.map((ch) => {
           const prog = progressMap.get(ch.id);
+          const pdfFile = ch.files.find((f) => f.format === "pdf") ?? null;
           return (
-            <button
-              key={ch.id}
-              onClick={() => router.push(`/reader/${ch.id}`)}
-              className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-accent/40 transition-colors text-left group"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className={clsx(
-                  "h-1.5 w-1.5 rounded-full shrink-0 transition-colors",
-                  prog?.is_completed
-                    ? "bg-emerald-500"
-                    : prog?.pages_read
-                    ? "bg-amber-500"
-                    : "bg-border"
-                )} />
-                <p className="text-sm truncate text-foreground/80 group-hover:text-foreground transition-colors">
-                  {ch.title || `Capítulo ${ch.range || ch.min_number}`}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {ch.pages > 0 && (
-                  <span className="text-xs text-muted-foreground">{ch.pages}p</span>
-                )}
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.75} />
-              </div>
-            </button>
+            <div key={ch.id} className="flex items-center group hover:bg-accent/40 transition-colors">
+              <button
+                onClick={() => router.push(`/reader/${ch.id}`)}
+                className="flex-1 px-4 py-2.5 flex items-center justify-between text-left min-w-0"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={clsx(
+                    "h-1.5 w-1.5 rounded-full shrink-0 transition-colors",
+                    prog?.is_completed
+                      ? "bg-emerald-500"
+                      : prog?.pages_read
+                      ? "bg-amber-500"
+                      : "bg-border"
+                  )} />
+                  <p className="text-sm truncate text-foreground/80 group-hover:text-foreground transition-colors">
+                    {ch.title || `Capítulo ${ch.range || ch.min_number}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {ch.pages > 0 && (
+                    <span className="text-xs text-muted-foreground">{ch.pages}p</span>
+                  )}
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.75} />
+                </div>
+              </button>
+              {pdfFile && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onOpenPdfTools(pdfFile); }}
+                  title="Ferramentas PDF"
+                  className="px-2 py-2.5 text-muted-foreground hover:text-primary transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                >
+                  <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

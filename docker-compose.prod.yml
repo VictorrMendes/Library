@@ -77,6 +77,25 @@ services:
     restart: unless-stopped
     command: celery -A config beat -l info
 
+  stirling-pdf:
+    image: stirlingtools/stirling-pdf:latest
+    container_name: biblioteca_stirling
+    restart: unless-stopped
+    environment:
+      SECURITY_ENABLELOGIN: "false"
+      SYSTEM_DEFAULTLOCALE: pt-BR
+      SYSTEM_MAXFILESIZE: "500"
+      METRICS_ENABLED: "false"
+      DISABLE_ADDITIONAL_FEATURES: "true"
+    volumes:
+      - stirling_data:/usr/share/tessdata
+      - stirling_config:/configs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/v1/info/status | grep -q 'UP' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
   frontend:
     build:
       context: ./frontend
@@ -91,6 +110,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  stirling_data:
+  stirling_config:
   postgres_data:
   media_data:
   covers_data:

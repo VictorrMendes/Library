@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { PdfJob } from "@/types";
 
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api",
@@ -313,6 +314,42 @@ export const fontsApi = {
     });
   },
   delete: (id: number) => api.delete(`/library/fonts/${id}/`),
+};
+
+// ─── PDF Tools ───────────────────────────────────────────────────────────────
+export const pdfToolsApi = {
+  compress: (manga_file_id: number, optimize_level = 3) =>
+    api.post('/pdf-tools/compress/', { manga_file_id, optimize_level }, { responseType: 'blob' }),
+
+  repair: (manga_file_id: number) =>
+    api.post('/pdf-tools/repair/', { manga_file_id }, { responseType: 'blob' }),
+
+  removePassword: (manga_file_id: number, password = '') =>
+    api.post('/pdf-tools/remove-password/', { manga_file_id, password }, { responseType: 'blob' }),
+
+  merge: (manga_file_ids: number[]) =>
+    api.post('/pdf-tools/merge/', { manga_file_ids }, { responseType: 'blob' }),
+
+  split: (manga_file_id: number, page_numbers: string) =>
+    api.post('/pdf-tools/split/', { manga_file_id, page_numbers }, { responseType: 'blob' }),
+
+  updateMetadata: (manga_file_id: number, metadata: Record<string, string>) =>
+    api.post('/pdf-tools/update-metadata/', { manga_file_id, ...metadata }, { responseType: 'blob' }),
+
+  extractImages: (manga_file_id: number) =>
+    api.post('/pdf-tools/extract-images/', { manga_file_id }, { responseType: 'blob' }),
+
+  ocr: (manga_file_id: number, languages = 'por,eng') =>
+    api.post<PdfJob>('/pdf-tools/ocr/', { manga_file_id, languages }),
+
+  pdfToEpub: (manga_file_id: number) =>
+    api.post<PdfJob>('/pdf-tools/pdf-to-epub/', { manga_file_id }),
+
+  getJob: (job_id: number) =>
+    api.get<PdfJob>(`/pdf-tools/jobs/${job_id}/`),
+
+  downloadJob: (job_id: number) =>
+    api.get(`/pdf-tools/jobs/${job_id}/download/`, { responseType: 'blob' }),
 };
 
 // ─── Vocabulary ───────────────────────────────────────────────────────────────

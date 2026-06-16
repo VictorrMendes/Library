@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "apps.collections",
     "apps.stats",
     "apps.vocabulary",
+    "apps.pdf_tools",
 ]
 
 MIDDLEWARE = [
@@ -150,6 +151,8 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Servidor de leitura auto-hospedado",
     "VERSION": "1.0.0",
 }
+
+STIRLING_URL = config("STIRLING_URL", default="http://stirling-pdf:8080")
 
 # Reverse proxy — tells Django to trust X-Forwarded-Proto from NPM/Cloudflare
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
